@@ -201,15 +201,6 @@ object Bundles {
       this
     }
 
-    def asWakeUpBundle: IssueQueueWakeUpBundle = {
-      val wakeup = Output(new IssueQueueWakeUpBundle(pdest.getWidth))
-      wakeup.rfWen := this.rfWen
-      wakeup.fpWen := this.fpWen
-      wakeup.vecWen := this.vecWen
-      wakeup.pdest := this.pdest
-      wakeup
-    }
-
     def needWriteRf: Bool = (rfWen && ldest =/= 0.U) || fpWen || vecWen
   }
 
@@ -218,20 +209,24 @@ object Bundles {
     var idx = 0
   }
 
-  class IssueQueueWakeUpBundle(pregIdxWidth: Int, wakeupSourceExu: String) extends Bundle with BundleSource {
+  class IssueQueueWakeUpBundle(pregIdxWidth: Int, wakeupSourceStr: String) extends Bundle with BundleSource {
     val rfWen = Bool()
     val fpWen = Bool()
     val vecWen = Bool()
     val pdest = UInt(pregIdxWidth.W)
 
-    this.wakeupSource = wakeupSourceExu
+    this.wakeupSource = wakeupSourceStr
+
+    var exuIdx = -1
 
     def this(pregIdxWidth: Int) = {
       this(pregIdxWidth, "undefined")
     }
 
-    def this(wakeupSourceExu: String)(implicit p: Parameters) = {
-      this(p(XSCoreParamsKey).PregIdxWidthMax, wakeupSourceExu)
+    def this(wakeupSource: String)(implicit p: Parameters) = {
+      this(p(XSCoreParamsKey).PregIdxWidthMax, wakeupSource)
+      val exuParams = p(XSCoreParamsKey).backendParams.allExuParams
+      this.exuIdx = exuParams.find(_.name == wakeupSource).get.exuIdx
     }
 
     /**
@@ -254,6 +249,7 @@ object Bundles {
       this.fpWen := exuInput.fpWen.getOrElse(false.B)
       this.vecWen := exuInput.vecWen.getOrElse(false.B)
       this.pdest := exuInput.pdest
+
       this.wakeupSource = exuInput.params.name
     }
   }
@@ -324,6 +320,11 @@ object Bundles {
         MixedVec(set.map((x: DataConfig) => new RfReadPortWithConfig(x, addrWidth)).toSeq)
       )
     ))
+
+    val bypass = new Bundle {
+      val exuOH = ExuOH()
+    }
+
     val srcType = Vec(exuParams.numRegSrc, SrcType()) // used to select imm or reg data
     val immType = SelImm()                         // used to select imm extractor
     val common = new ExuInput(exuParams)
@@ -502,16 +503,6 @@ object Bundles {
       this.debugInfo := source.debugInfo
     }
 
-    def asWakeUpBundle: IssueQueueWakeUpBundle = {
-      val wakeup = Output(new IssueQueueWakeUpBundle(params.pregIdxWidth))
-      wakeup.rfWen := this.rfWen
-      wakeup.fpWen := this.fpWen
-      wakeup.vecWen := this.vecWen
-      wakeup.pdest := this.pdest
-      wakeup.wakeupSource = this.wakeupSource
-      wakeup
-    }
-
     def asIntRfWriteBundle(fire: Bool): RfWritePortWithConfig = {
       val rfWrite = Wire(Output(new RfWritePortWithConfig(this.params.dataCfg, this.params.pregIdxWidth)))
       rfWrite.wen := this.rfWen && fire
@@ -553,6 +544,14 @@ object Bundles {
     def apply(): UInt = UInt(width.W)
 
     def width = 4 // 0~15 // Todo: assosiate it with FuConfig
+  }
+
+  object ExuOH {
+    def apply(exuNum: Int): Vec[Bool] = Vec(exuNum, Bool())
+
+    def apply()(implicit p: Parameters): Vec[Bool] = Vec(width, Bool())
+
+    def width(implicit p: Parameters): Int = p(XSCoreParamsKey).backendParams.numExu
   }
 
   class MemExuInput(isVector: Boolean = false)(implicit p: Parameters) extends XSBundle {

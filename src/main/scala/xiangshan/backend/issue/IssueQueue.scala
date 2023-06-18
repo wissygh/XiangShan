@@ -42,7 +42,7 @@ class IssueQueueIO()(implicit p: Parameters, params: IssueBlockParams) extends X
   val og0Resp = Vec(params.numDeq, Flipped(ValidIO(new IssueQueueDeqRespBundle)))
   val og1Resp = Vec(params.numDeq, Flipped(ValidIO(new IssueQueueDeqRespBundle)))
   val wbBusyTableRead: MixedVec[Bundles.WbFuBusyTableReadBundle] = Input(params.genWbFuBusyTableReadBundle())
-  val wakeupFromWB = Vec(params.numWakeupFromWB, Flipped(ValidIO(new IssueQueueWakeUpBundle(params.pregBits))))
+  val wakeupFromWB = Vec(params.numWakeupFromWB, Flipped(ValidIO(new IssueQueueWakeUpBundle("WB"))))
   val wakeupFromIQ: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = Flipped(params.genWakeUpSinkValidBundle)
 
   // Outputs
@@ -126,6 +126,7 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   val canIssueVec = VecInit(statusArray.io.canIssue.asBools)
   val clearVec = VecInit(statusArray.io.clear.asBools)
   val deqFirstIssueVec = VecInit(statusArray.io.deq.map(_.isFirstIssue))
+  val wakeUpIQOH = VecInit(statusArray.io.srcWakeUpIQOH)
 
   val wakeupEnqSrcStateBypass = Wire(Vec(io.enq.size, Vec(io.enq.head.bits.srcType.size, SrcState())))
   for (i <- io.enq.indices) {
@@ -141,7 +142,8 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     */
   statusArray.io match { case statusArrayIO: StatusArrayIO =>
     statusArrayIO.flush  <> io.flush
-    statusArrayIO.wakeup <> io.wakeupFromWB ++ io.wakeupFromIQ
+    statusArrayIO.wakeUpFromIQ := io.wakeupFromIQ
+    statusArrayIO.wakeUpFromWB := io.wakeupFromWB
     statusArrayIO.enq.zipWithIndex.foreach { case (enq: ValidIO[StatusArrayEnqBundle], i) =>
       enq.valid                 := s0_doEnqSelValidVec(i)
       enq.bits.addrOH           := s0_enqSelOHVec(i)
@@ -369,6 +371,10 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     }
     deq.bits.rf.zip(payloadArrayRdata(i).srcType).foreach { case (rf, srcType) =>
       rf.foreach(_.srcType := srcType) // psrc in payload array can be pregIdx of IntRegFile or VfRegFile
+    }
+    deq.bits.bypass.exuOH.foreach(_ := false.B)
+    for ((iqWakeUp, idx) <- wakeUpIQOH.zipWithIndex) {
+      deq.bits.bypass.exuOH(io.wakeupFromIQ(idx).bits.exuIdx) := iqWakeUp
     }
     deq.bits.srcType.zip(payloadArrayRdata(i).srcType).foreach { case (sink, source) =>
       sink := source
