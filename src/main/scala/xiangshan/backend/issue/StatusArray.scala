@@ -67,7 +67,7 @@ class StatusArrayIO(implicit p: Parameters, params: IssueBlockParams) extends XS
   val valid = Output(UInt(params.numEntries.W))
   val canIssue = Output(UInt(params.numEntries.W))
   val clear = Output(UInt(params.numEntries.W))
-  val srcWakeUpIQOH = Output(Vec(params.numEntries, Vec(params.numWakeupFromIQ, Bool())))
+  val srcWakeUpIQOH = Output(Vec(params.numEntries, Vec(params.numRegSrc, Vec(params.numWakeupFromIQ, Bool()))))
   // enq
   val enq = Vec(params.numEnq, Flipped(ValidIO(new StatusArrayEnqBundle)))
   // wakeup
