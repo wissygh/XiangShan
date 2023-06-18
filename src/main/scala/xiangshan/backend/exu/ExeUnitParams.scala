@@ -161,9 +161,10 @@ case class ExeUnitParams(
   def hasUncertainLatency: Boolean = fuConfigs.map(_.latency.latencyVal.isEmpty).reduce(_ || _)
 
   def updateIQWakeUpConfigs(cfgs: Seq[WakeUpConfig]) = {
-    this.iqWakeUpSourcePairs = cfgs.filter(_.source == this.name)
-    this.iqWakeUpSinkPairs = cfgs.filter(_.sink == this.name)
-    require(this.isIQWakeUpSource && !this.hasUncertainLatency)
+    this.iqWakeUpSourcePairs = cfgs.filter(_.source.name == this.name)
+    this.iqWakeUpSinkPairs = cfgs.filter(_.sink.name == this.name)
+    if (this.isIQWakeUpSource)
+      require(!this.hasUncertainLatency, s"${this.name} is IQ wake up source, but has UncertainLatency")
   }
 
   def isIQWakeUpSource = this.iqWakeUpSourcePairs.nonEmpty

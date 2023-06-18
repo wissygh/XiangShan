@@ -4,12 +4,13 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
-import utility.HasCircularQueuePtrHelper
+import utility.{HasCircularQueuePtrHelper, ParallelLookUp}
 import utils.OptionWrapper
 import xiangshan._
+import xiangshan.backend.Bundles
 import xiangshan.backend.fu.{FuConfig, FuType}
 import xiangshan.mem.{MemWaitUpdateReq, SqPtr}
-import xiangshan.backend.Bundles.{DynInst, IssueQueueIssueBundle, IssueQueueWakeUpBundle}
+import xiangshan.backend.Bundles.{DynInst, ExuInput, IssueQueueIssueBundle, IssueQueueWakeUpBundle}
 import xiangshan.backend.datapath.DataConfig._
 import xiangshan.backend.exu.ExeUnitParams
 
@@ -33,19 +34,24 @@ class IssueQueueStatusBundle(numEnq: Int) extends Bundle {
 class IssueQueueDeqRespBundle(implicit p:Parameters, params: IssueBlockParams) extends StatusArrayDeqRespBundle
 
 class IssueQueueIO()(implicit p: Parameters, params: IssueBlockParams) extends XSBundle {
+  // Inputs
   val flush = Flipped(ValidIO(new Redirect))
-
   val enq = Vec(params.numEnq, Flipped(DecoupledIO(new DynInst)))
 
-  val deq: MixedVec[DecoupledIO[IssueQueueIssueBundle]] = params.genIssueDecoupledBundle
   val deqResp = Vec(params.numDeq, Flipped(ValidIO(new IssueQueueDeqRespBundle)))
   val og0Resp = Vec(params.numDeq, Flipped(ValidIO(new IssueQueueDeqRespBundle)))
   val og1Resp = Vec(params.numDeq, Flipped(ValidIO(new IssueQueueDeqRespBundle)))
-  val wbBusyTableRead = Input(params.genWbFuBusyTableReadBundle())
-  val wakeup = Vec(params.numWakeupFromWB, Flipped(ValidIO(new IssueQueueWakeUpBundle(params.pregBits))))
+  val wbBusyTableRead: MixedVec[Bundles.WbFuBusyTableReadBundle] = Input(params.genWbFuBusyTableReadBundle())
+  val wakeupFromWB = Vec(params.numWakeupFromWB, Flipped(ValidIO(new IssueQueueWakeUpBundle(params.pregBits))))
+  val wakeupFromIQ: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = Flipped(params.genWakeUpSinkValidBundle)
+
+  // Outputs
+  val deq: MixedVec[DecoupledIO[IssueQueueIssueBundle]] = params.genIssueDecoupledBundle
+  val wakeupToIQ: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = params.genWakeUpSourceValidBundle
   val status = Output(new IssueQueueStatusBundle(params.numEnq))
   val statusNext = Output(new IssueQueueStatusBundle(params.numEnq))
-  // Todo: wake up bundle
+
+  def allWakeUp = wakeupFromWB ++ wakeupFromIQ
 }
 
 class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, val params: IssueBlockParams)
@@ -53,13 +59,15 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   with HasXSParameter {
 
   println(s"[IssueQueueImp] ${params.getIQName} wakeupFromWB: ${params.numWakeupFromWB}, " +
+    s"wakeup exu sources(${params.wakeUpInExuSources.size}): ${params.wakeUpInExuSources.map(_.name).mkString("{",",","}")}, " +
     s"numEntries: ${params.numEntries}, numRegSrc: ${params.numRegSrc}")
 
   require(params.numExu <= 2, "IssueQueue has not supported more than 2 deq ports")
   val deqFuCfgs     : Seq[Seq[FuConfig]] = params.exuBlockParams.map(_.fuConfigs)
-  val allDeqFuCfgs: Seq[FuConfig] = params.exuBlockParams.flatMap(_.fuConfigs)
+  val allDeqFuCfgs  : Seq[FuConfig] = params.exuBlockParams.flatMap(_.fuConfigs)
   val fuCfgsCnt     : Map[FuConfig, Int] = allDeqFuCfgs.groupBy(x => x).map { case (cfg, cfgSeq) => (cfg, cfgSeq.length) }
   val commonFuCfgs  : Seq[FuConfig] = fuCfgsCnt.filter(_._2 > 1).keys.toSeq
+  val fuLatencyMaps : Seq[Map[Int, Int]] = params.exuBlockParams.map(x => x.fuLatencyMap)
   println(s"[IssueQueueImp] ${params.getIQName} commonFuCfgs: ${commonFuCfgs.map(_.name)}")
   lazy val io = IO(new IssueQueueIO())
   dontTouch(io.deq)
@@ -74,6 +82,14 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   val fuBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.latencyValMax > 0, () => Module(new FuBusyTableRead(params.exuBlockParams(i).fuLatencyMap))) }
   val intWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.intLatencyCertain, () => Module(new FuBusyTableRead(params.exuBlockParams(i).intFuLatencyMap))) }
   val vfWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.vfLatencyCertain, () => Module(new FuBusyTableRead(params.exuBlockParams(i).vfFuLatencyMap))) }
+  val wakeUpQueues: Seq[Option[MultiWakeupQueue[ExuInput, ValidIO[Redirect]]]] = params.exuBlockParams.map { x => OptionWrapper(x.isIQWakeUpSource, () => Module(
+    new MultiWakeupQueue(
+      new ExuInput(x),
+      ValidIO(new Redirect) ,
+      x.fuLatancySet,
+      (exuInput: ExuInput, flush: ValidIO[Redirect]) => exuInput.robIdx.needFlush(flush)
+    )
+  ))}
 
   val intWbBusyTable = io.wbBusyTableRead.map(_.intWbBusyTable)
   val vfWbBusyTable = io.wbBusyTableRead.map(_.vfWbBusyTable)
@@ -115,14 +131,17 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   for (i <- io.enq.indices) {
     for (j <- s0_enqBits(i).srcType.indices) {
       wakeupEnqSrcStateBypass(i)(j) := Cat(
-        io.wakeup.map(x => x.bits.wakeUp(Seq((s0_enqBits(i).psrc(j), s0_enqBits(i).srcType(j))), x.valid).head)
+        io.wakeupFromWB.map(x => x.bits.wakeUp(Seq((s0_enqBits(i).psrc(j), s0_enqBits(i).srcType(j))), x.valid).head)
       ).orR
     }
   }
 
+  /**
+    * Connection of [[statusArray]]
+    */
   statusArray.io match { case statusArrayIO: StatusArrayIO =>
     statusArrayIO.flush  <> io.flush
-    statusArrayIO.wakeup <> io.wakeup
+    statusArrayIO.wakeup <> io.wakeupFromWB ++ io.wakeupFromIQ
     statusArrayIO.enq.zipWithIndex.foreach { case (enq: ValidIO[StatusArrayEnqBundle], i) =>
       enq.valid                 := s0_doEnqSelValidVec(i)
       enq.bits.addrOH           := s0_enqSelOHVec(i)
@@ -168,6 +187,9 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     }
   }
 
+  /**
+    * Connection of [[immArray]]
+    */
   val immArrayRdataVec = immArray.io.read.map(_.data)
   immArray.io match { case immArrayIO: DataArrayIO[UInt] =>
     immArrayIO.write.zipWithIndex.foreach { case (w, i) =>
@@ -180,6 +202,9 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     }
   }
 
+  /**
+    * Connection of [[payloadArray]]
+    */
   val payloadArrayRdata = Wire(Vec(params.numDeq, Output(new DynInst)))
   payloadArray.io match { case payloadArrayIO: DataArrayIO[DynInst] =>
     payloadArrayIO.write.zipWithIndex.foreach { case (w, i) =>
@@ -315,6 +340,16 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     }
   }
 
+  wakeUpQueues.zipWithIndex.foreach { case (wakeUpQueueOption, i) =>
+    wakeUpQueueOption.foreach {
+      wakeUpQueue =>
+        wakeUpQueue.io.flush := io.flush
+        wakeUpQueue.io.enq.valid := io.deq(i).valid
+        wakeUpQueue.io.enq.bits.uop := io.deq(i).bits.common
+        wakeUpQueue.io.enq.bits.lat := getDeqLat(i, io.deq(i).bits.common.fuType)
+    }
+  }
+
   io.deq.zipWithIndex.foreach { case (deq, i) =>
     deq.valid                := finalDeqSelValidVec(i)
     deq.bits.addrOH          := finalDeqSelOHVec(i)
@@ -341,6 +376,16 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     deq.bits.immType := payloadArrayRdata(i).selImm
   }
 
+  io.wakeupToIQ.zipWithIndex.foreach { case (wakeup, i) =>
+    if (wakeUpQueues(i).nonEmpty) {
+      wakeup.valid := wakeUpQueues(i).get.io.deq.valid
+      wakeup.bits.fromExuInput(wakeUpQueues(i).get.io.deq.bits)
+    } else {
+      wakeup.valid := false.B
+      wakeup.bits := 0.U.asTypeOf(wakeup.bits.cloneType)
+    }
+  }
+
   // Todo: better counter implementation
   private val validCnt = PopCount(validVec)
   private val enqSelCnt = PopCount(s0_doEnqSelValidVec)
@@ -358,6 +403,10 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     io.statusNext.leftVec(i + 1) := validCntNext === (params.numEntries - (i + 1)).U
   }
   io.enq.foreach(_.ready := !Cat(io.status.leftVec).orR) // Todo: more efficient implementation
+
+  protected def getDeqLat(deqPortIdx: Int, fuType: UInt) : UInt = {
+    ParallelLookUp(fuType, fuLatencyMaps(deqPortIdx).map { case (k, v) => (k.U, v.U) }.toSeq)
+  }
 }
 
 class IssueQueueJumpBundle extends Bundle {

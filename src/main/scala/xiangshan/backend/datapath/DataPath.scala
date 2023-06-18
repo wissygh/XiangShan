@@ -177,7 +177,7 @@ class DataPathImp(override val wrapper: DataPath)(implicit p: Parameters, params
   val intReadPortInSize: IndexedSeq[Int] = issuePortsIn.map(issuePortIn => issuePortIn.bits.getIntRfReadBundle.size).scan(0)(_ + _)
   issuePortsIn.zipWithIndex.foreach{
     case (issuePortIn, idx) =>
-      val wbBusyIn = issuePortIn.bits.getIntWbBusyBundle
+      val wbBusyIn: Seq[Bool] = issuePortIn.bits.getIntWbBusyBundle
       val lw = intWbBusyInSize(idx)
       val rw = intWbBusyInSize(idx + 1)
       val arbiterInW = intWbBusyArbiter.io.in.slice(lw, rw)
