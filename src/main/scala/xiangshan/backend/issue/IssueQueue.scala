@@ -126,7 +126,7 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   val canIssueVec = VecInit(statusArray.io.canIssue.asBools)
   val clearVec = VecInit(statusArray.io.clear.asBools)
   val deqFirstIssueVec = VecInit(statusArray.io.deq.map(_.isFirstIssue))
-  val wakeUpIQOH = VecInit(statusArray.io.srcWakeUpIQOH)
+  val wakeUpIQOH = statusArray.io.srcWakeUpIQOH
 
   val wakeupEnqSrcStateBypass = Wire(Vec(io.enq.size, Vec(io.enq.head.bits.srcType.size, SrcState())))
   for (i <- io.enq.indices) {
