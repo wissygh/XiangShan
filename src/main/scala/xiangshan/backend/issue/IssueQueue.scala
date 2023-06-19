@@ -78,11 +78,11 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   val payloadArray  = Module(new DataArray(Output(new DynInst), params.numDeq, params.numEnq, params.numEntries))
   val enqPolicy     = Module(new EnqPolicy)
   val subDeqPolicies  = deqFuCfgs.map(x => if (x.nonEmpty) Some(Module(new DeqPolicy())) else None)
-  val fuBusyTableWrite = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.latencyValMax > 0, () => Module(new FuBusyTableWrite(i))) }
-  val fuBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.latencyValMax > 0, () => Module(new FuBusyTableRead(params.exuBlockParams(i).fuLatencyMap))) }
-  val intWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.intLatencyCertain, () => Module(new FuBusyTableRead(params.exuBlockParams(i).intFuLatencyMap))) }
-  val vfWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.vfLatencyCertain, () => Module(new FuBusyTableRead(params.exuBlockParams(i).vfFuLatencyMap))) }
-  val wakeUpQueues: Seq[Option[MultiWakeupQueue[ExuInput, ValidIO[Redirect]]]] = params.exuBlockParams.map { x => OptionWrapper(x.isIQWakeUpSource, () => Module(
+  val fuBusyTableWrite = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.latencyValMax > 0, Module(new FuBusyTableWrite(i))) }
+  val fuBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.latencyValMax > 0, Module(new FuBusyTableRead(params.exuBlockParams(i).fuLatencyMap))) }
+  val intWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.intLatencyCertain, Module(new FuBusyTableRead(params.exuBlockParams(i).intFuLatencyMap))) }
+  val vfWbBusyTableRead = params.exuBlockParams.zipWithIndex.map { case (x, i) => OptionWrapper(x.vfLatencyCertain, Module(new FuBusyTableRead(params.exuBlockParams(i).vfFuLatencyMap))) }
+  val wakeUpQueues: Seq[Option[MultiWakeupQueue[ExuInput, ValidIO[Redirect]]]] = params.exuBlockParams.map { x => OptionWrapper(x.isIQWakeUpSource, Module(
     new MultiWakeupQueue(
       new ExuInput(x),
       ValidIO(new Redirect) ,
