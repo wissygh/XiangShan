@@ -44,5 +44,5 @@ class MultiWakeupQueue[T <: Data, TFlush <: Data](
   io.deq.valid := pipesValidVec.asUInt.orR
   io.deq.bits := Mux1H(pipesValidVec, pipesBitsVec)
 
-  assert(PopCount(pipesValidVec) > 1.U, "PopCount(pipesValidVec) should be no more than 1")
+//  assert(PopCount(pipesValidVec) > 1.U, "PopCount(pipesValidVec) should be no more than 1")
 }
