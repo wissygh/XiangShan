@@ -399,6 +399,7 @@ object Bundles {
     }) else None
     val sqIdx = if (params.hasMemAddrFu || params.hasStdFu) Some(new SqPtr) else None
     val lqIdx = if (params.hasMemAddrFu) Some(new LqPtr) else None
+    val exuOH = OptionWrapper(params.isIQWakeUpSink, Vec(params.numRegSrc, ExuOH()))
 
     def getVfWen = {
       if (params.writeFpRf) this.fpWen
@@ -520,6 +521,18 @@ object Bundles {
       rfWrite.vecWen := this.vecWen
       rfWrite
     }
+  }
+
+  // ExuOutput --> ExuBypassBundle --[DataPath]-->ExuInput
+  //                                /
+  //     [IssueQueue]--> ExuInput --
+  class ExuBypassBundle(
+    val params: ExeUnitParams,
+  )(implicit
+    val p: Parameters
+  ) extends Bundle {
+    val data  = UInt(params.dataBitsMax.W)
+    val pdest = UInt(params.wbPregIdxWidth.W)
   }
 
   class ExceptionInfo extends Bundle {
