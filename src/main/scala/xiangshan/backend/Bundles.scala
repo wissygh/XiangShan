@@ -426,6 +426,7 @@ object Bundles {
       this.predictInfo  .foreach(_ := source.common.predictInfo.get)
       this.lqIdx        .foreach(_ := source.common.lqIdx.get)
       this.sqIdx        .foreach(_ := source.common.sqIdx.get)
+      this.exuOH        .foreach(_ := source.common.exuOH.get)
     }
   }
 
