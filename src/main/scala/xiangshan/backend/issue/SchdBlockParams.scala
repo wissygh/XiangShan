@@ -67,7 +67,7 @@ case class SchdBlockParams(
 
   def VstuCnt: Int = issueBlockParams.map(_.VstuCnt).sum
 
-  def numExu: Int = issueBlockParams.map(_.exuBlockParams.count(!_.hasStdFu)).sum
+  def numExu: Int = issueBlockParams.map(_.exuBlockParams.size).sum
 
   def hasCSR = CsrCnt > 0
 

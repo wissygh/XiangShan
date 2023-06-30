@@ -250,6 +250,18 @@ object Bundles {
     }
   }
 
+  /**
+    * This bundle is used to set srcState as NotReady.
+    * @param cancelSeq cancel stage seq
+    */
+  class IssueQueueCancelBundle(val exuIdx: Int, cancelSeq: Seq[String]) extends Bundle {
+    val cancelVec: Vec[Bool] = Vec(cancelSeq.size, Bool())
+
+    def apply(cancelStage: String): Bool = {
+      this.cancelVec(cancelSeq.indexOf(cancelStage.toUpperCase))
+    }
+  }
+
   class VPUCtrlSignals(implicit p: Parameters) extends XSBundle {
     // vtype
     val vill      = Bool()
@@ -323,6 +335,7 @@ object Bundles {
     val jmp = if (exuParams.needPc) Some(Flipped(new IssueQueueJumpBundle)) else None
     val addrOH = UInt(iqParams.numEntries.W)
 
+    def exuIdx = exuParams.exuIdx
     def getSource: SchedulerType = exuParams.getWBSource
     def getIntWbBusyBundle = common.rfWen.toSeq
     def getVfWbBusyBundle = common.getVfWen.toSeq
@@ -396,6 +409,8 @@ object Bundles {
     val sqIdx = if (params.hasMemAddrFu || params.hasStdFu) Some(new SqPtr) else None
     val lqIdx = if (params.hasMemAddrFu) Some(new LqPtr) else None
     val exuOH = OptionWrapper(params.isIQWakeUpSink, Vec(params.numRegSrc, ExuOH()))
+
+    def exuIdx = this.params.exuIdx
 
     def getVfWen = {
       if (params.writeFpRf) this.fpWen

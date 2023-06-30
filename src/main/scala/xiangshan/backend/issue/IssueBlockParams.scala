@@ -179,6 +179,8 @@ case class IssueBlockParams(
 
   def numAllWakeUp: Int = numWakeupFromWB + numWakeupFromIQ + numWakeupFromOthers
 
+  def hasIQWakeUp: Boolean = numWakeupFromIQ > 0
+
   def getFuCfgs: Seq[FuConfig] = exuBlockParams.flatMap(_.fuConfigs).distinct
 
   // cfgs(exuIdx)(set of exu's wb)

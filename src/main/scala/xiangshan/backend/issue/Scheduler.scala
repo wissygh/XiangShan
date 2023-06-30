@@ -10,7 +10,7 @@ import xiangshan.backend.datapath.DataConfig.VAddrData
 import xiangshan.backend.regfile.RfWritePortWithConfig
 import xiangshan.backend.rename.BusyTable
 import xiangshan.mem.{LsqEnqCtrl, LsqEnqIO, MemWaitUpdateReq, SqPtr}
-import xiangshan.backend.Bundles.{DynInst, IssueQueueWakeUpBundle}
+import xiangshan.backend.Bundles.{DynInst, IssueQueueCancelBundle, IssueQueueWakeUpBundle}
 
 sealed trait SchedulerType
 
@@ -62,7 +62,6 @@ class SchedulerIO()(implicit params: SchdBlockParams, p: Parameters) extends XSB
   val vfWriteBack = MixedVec(Vec(backendParams.vfPregParams.numWrite,
     new RfWritePortWithConfig(backendParams.vfPregParams.dataCfg, backendParams.vfPregParams.addrWidth)))
   val toDataPath: MixedVec[MixedVec[DecoupledIO[Bundles.IssueQueueIssueBundle]]] = MixedVec(params.issueBlockParams.map(_.genIssueDecoupledBundle))
-  val fromDataPath: MixedVec[MixedVec[Bundles.OGRespBundle]] = MixedVec(params.issueBlockParams.map(x => Flipped(x.genOGRespBundle)))
 
   val fromSchedulers = new Bundle {
     val wakeupVec: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = Flipped(params.genWakeUpInValidBundle)
@@ -71,6 +70,14 @@ class SchedulerIO()(implicit params: SchdBlockParams, p: Parameters) extends XSB
   val toSchedulers = new Bundle {
     val wakeupVec: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = params.genWakeUpOutValidBundle
   }
+
+  val fromDataPath = new Bundle {
+    val resp: MixedVec[MixedVec[Bundles.OGRespBundle]] = MixedVec(params.issueBlockParams.map(x => Flipped(x.genOGRespBundle)))
+    val cancel: MixedVec[IssueQueueCancelBundle] = Input(MixedVec(fromSchedulers.wakeupVec.map(x => new IssueQueueCancelBundle(x.bits.exuIdx, cancelStages))))
+    // just be compatible to old code
+    def apply(i: Int)(j: Int) = resp(i)(j)
+  }
+
 
   val memIO = if (params.isMemSchd) Some(new Bundle {
     val lsqEnqIO = Flipped(new LsqEnqIO)
@@ -172,6 +179,9 @@ abstract class SchedulerImpBase(wrapper: Scheduler)(implicit params: SchdBlockPa
     iq.io.wakeupFromIQ.foreach { wakeUp =>
       wakeUp := iqWakeUpInMap(wakeUp.bits.wakeupSource)
     }
+    iq.io.cancelFromDataPath.map (sink => {
+      sink.cancelVec := io.fromDataPath.cancel.find(_.exuIdx == sink.exuIdx).get.cancelVec
+    })
   }
 
   private val iqWakeUpOutMap: Map[String, ValidIO[IssueQueueWakeUpBundle]] =

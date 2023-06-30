@@ -342,8 +342,9 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   intScheduler.io.fromDispatch.uops <> ctrlBlock.io.toIssueBlock.intUops
   intScheduler.io.intWriteBack := wbDataPath.io.toIntPreg
   intScheduler.io.vfWriteBack := 0.U.asTypeOf(intScheduler.io.vfWriteBack)
-  intScheduler.io.fromDataPath := dataPath.io.toIntIQ
+  intScheduler.io.fromDataPath.resp := dataPath.io.toIntIQ
   intScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  intScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
 
   memScheduler.io.fromTop.hartId := io.fromTop.hartId
   memScheduler.io.fromCtrlBlock.flush := ctrlBlock.io.toIssueBlock.flush
@@ -361,10 +362,11 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
     sink.bits.uop := 0.U.asTypeOf(sink.bits.uop)
     sink.bits.uop.robIdx := source.bits.robIdx
   }
-  memScheduler.io.fromDataPath := dataPath.io.toMemIQ
+  memScheduler.io.fromDataPath.resp := dataPath.io.toMemIQ
   memScheduler.io.fromMem.get.ldaFeedback := io.mem.ldaIqFeedback
   memScheduler.io.fromMem.get.staFeedback := io.mem.staIqFeedback
   memScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  memScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
 
   vfScheduler.io.fromTop.hartId := io.fromTop.hartId
   vfScheduler.io.fromCtrlBlock.flush := ctrlBlock.io.toIssueBlock.flush
@@ -372,8 +374,10 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   vfScheduler.io.fromDispatch.uops <> ctrlBlock.io.toIssueBlock.vfUops
   vfScheduler.io.intWriteBack := 0.U.asTypeOf(vfScheduler.io.intWriteBack)
   vfScheduler.io.vfWriteBack := wbDataPath.io.toVfPreg
-  vfScheduler.io.fromDataPath := dataPath.io.toVfIQ
+  vfScheduler.io.fromDataPath.resp := dataPath.io.toVfIQ
   vfScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  vfScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
+
   dataPath.io.flush := ctrlBlock.io.toDataPath.flush
   dataPath.io.vconfigReadPort.addr := ctrlBlock.io.toDataPath.vtypeAddr
 

@@ -10,7 +10,7 @@ import xiangshan._
 import xiangshan.backend.Bundles
 import xiangshan.backend.fu.{FuConfig, FuType}
 import xiangshan.mem.{MemWaitUpdateReq, SqPtr}
-import xiangshan.backend.Bundles.{DynInst, ExuInput, IssueQueueIssueBundle, IssueQueueWakeUpBundle}
+import xiangshan.backend.Bundles.{DynInst, ExuInput, IssueQueueCancelBundle, IssueQueueIssueBundle, IssueQueueWakeUpBundle}
 import xiangshan.backend.datapath.DataConfig._
 import xiangshan.backend.exu.ExeUnitParams
 
@@ -44,6 +44,7 @@ class IssueQueueIO()(implicit p: Parameters, params: IssueBlockParams) extends X
   val wbBusyTableRead: MixedVec[Bundles.WbFuBusyTableReadBundle] = Input(params.genWbFuBusyTableReadBundle())
   val wakeupFromWB = Vec(params.numWakeupFromWB, Flipped(ValidIO(new IssueQueueWakeUpBundle("WB", params.backendParam))))
   val wakeupFromIQ: MixedVec[ValidIO[IssueQueueWakeUpBundle]] = Flipped(params.genWakeUpSinkValidBundle)
+  val cancelFromDataPath: MixedVec[IssueQueueCancelBundle] = Input(MixedVec(wakeupFromIQ.map(x => new IssueQueueCancelBundle(x.bits.exuIdx, cancelStages))))
 
   // Outputs
   val deq: MixedVec[DecoupledIO[IssueQueueIssueBundle]] = params.genIssueDecoupledBundle
@@ -145,6 +146,7 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   statusArray.io match { case statusArrayIO: StatusArrayIO =>
     statusArrayIO.flush  <> io.flush
     statusArrayIO.wakeUpFromIQ := io.wakeupFromIQ
+    statusArrayIO.cancelFromDataPath := io.cancelFromDataPath
     statusArrayIO.wakeUpFromWB := io.wakeupFromWB
     statusArrayIO.enq.zipWithIndex.foreach { case (enq: ValidIO[StatusArrayEnqBundle], i) =>
       enq.valid                 := s0_doEnqSelValidVec(i)
@@ -164,6 +166,7 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
         case Some(value) => value := 0.U.asTypeOf(value)
         case None =>
       }
+      enq.bits.data.srcTimer.foreach(_ := 0.U)
     }
     statusArrayIO.deq.zipWithIndex.foreach { case (deq, i) =>
       deq.deqSelOH.valid  := finalDeqSelValidVec(i)
