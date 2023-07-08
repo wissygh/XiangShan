@@ -221,7 +221,7 @@ class StatusArray()(implicit p: Parameters, params: IssueBlockParams) extends XS
         }
         statusNext.srcTimer.get.zip(status.srcTimer.get).foreach {
           case (srcIssuedTimerNext, srcIssuedTimer) =>
-            srcIssuedTimer := MuxCase(0.U, Seq(
+            srcIssuedTimerNext := MuxCase(0.U, Seq(
               // T0: waked up by IQ, T1: set timer as 1
               statusNext.srcWakeUpL1ExuOH.get.asUInt.orR -> 1.U,
               // T2+: increase if this entry has still been valid
