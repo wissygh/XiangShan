@@ -4,16 +4,16 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
-import utility.{PipelineConnect, ZeroExt}
+import utility.ZeroExt
 import xiangshan._
-import xiangshan.backend.Bundles.{DynInst, MemExuInput, MemExuOutput}
+import xiangshan.backend.Bundles.{DynInst, IssueQueueIQWakeUpBundle, MemExuInput, MemExuOutput}
 import xiangshan.backend.ctrlblock.CtrlBlock
 import xiangshan.backend.datapath.WbConfig._
 import xiangshan.backend.datapath.{BypassNetwork, DataPath, NewPipelineConnect, WbDataPath}
 import xiangshan.backend.exu.ExuBlock
 import xiangshan.backend.fu.vector.Bundles.{VConfig, VType}
 import xiangshan.backend.fu.{FenceIO, FenceToSbuffer, FuConfig, PerfCounterIO}
-import xiangshan.backend.issue.{IntScheduler, MemScheduler, Scheduler, VfScheduler}
+import xiangshan.backend.issue.Scheduler
 import xiangshan.backend.rob.RobLsqIO
 import xiangshan.frontend.{FtqPtr, FtqRead}
 import xiangshan.mem.{LqPtr, LsqEnqIO, SqPtr}
@@ -45,16 +45,21 @@ class Backend(val params: BackendParams)(implicit p: Parameters) extends LazyMod
 
     println("[Backend]   " +
       s"${exuCfg.name}: " +
-      s"${ fuConfigs.map(_.name).mkString("fu(s): {", ",", "}") }, " +
-      s"${ wbPortConfigs.mkString("wb: {", ",", "}") }, " +
-      s"${ immType.map(SelImm.mkString(_)).mkString("imm: {", "," , "}") }, " +
-      s"latMax(${exuCfg.latencyValMax}), ${exuCfg.fuLatancySet.mkString("lat: {",",","}")}, ")
-    require(wbPortConfigs.collectFirst { case x: IntWB => x }.nonEmpty ==
-      fuConfigs.map(_.writeIntRf).reduce(_ || _),
-      "int wb port has no priority" )
-    require(wbPortConfigs.collectFirst { case x: VfWB => x }.nonEmpty ==
-      fuConfigs.map(x => x.writeFpRf || x.writeVecRf).reduce(_ || _),
-      "vec wb port has no priority" )
+      s"${fuConfigs.map(_.name).mkString("fu(s): {", ",", "}")}, " +
+      s"${wbPortConfigs.mkString("wb: {", ",", "}")}, " +
+      s"${immType.map(SelImm.mkString(_)).mkString("imm: {", ",", "}")}, " +
+      s"latMax(${exuCfg.latencyValMax}), ${exuCfg.fuLatancySet.mkString("lat: {", ",", "}")}, "
+    )
+    require(
+      wbPortConfigs.collectFirst { case x: IntWB => x }.nonEmpty ==
+        fuConfigs.map(_.writeIntRf).reduce(_ || _),
+      "int wb port has no priority"
+    )
+    require(
+      wbPortConfigs.collectFirst { case x: VfWB => x }.nonEmpty ==
+        fuConfigs.map(x => x.writeFpRf || x.writeVecRf).reduce(_ || _),
+      "vec wb port has no priority"
+    )
   }
 
   for (cfg <- FuConfig.allConfigs) {
@@ -73,7 +78,7 @@ class Backend(val params: BackendParams)(implicit p: Parameters) extends LazyMod
 }
 
 class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends LazyModuleImp(wrapper)
-  with HasXSParameter{
+  with HasXSParameter {
   implicit private val params = wrapper.params
   val io = IO(new BackendIO()(p, wrapper.params))
 
@@ -87,11 +92,11 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   private val bypassNetwork = Module(new BypassNetwork)
   private val wbDataPath = Module(new WbDataPath(params))
 
-  private val iqWakeUpMappedBundle: Map[String, ValidIO[Bundles.IssueQueueWakeUpBundle]] = (
+  private val iqWakeUpMappedBundle: Map[Int, ValidIO[IssueQueueIQWakeUpBundle]] = (
     intScheduler.io.toSchedulers.wakeupVec ++
-    vfScheduler.io.toSchedulers.wakeupVec ++
-    memScheduler.io.toSchedulers.wakeupVec
-  ).map(x => (x.bits.wakeupSource, x)).toMap
+      vfScheduler.io.toSchedulers.wakeupVec ++
+      memScheduler.io.toSchedulers.wakeupVec
+    ).map(x => (x.bits.exuIdx, x)).toMap
 
   println(s"[Backend] iq wake up keys: ${iqWakeUpMappedBundle.keys}")
 
@@ -117,39 +122,39 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   private val allExuParams = params.allExuParams
   private val intRespWriteWithParams = intAllRespWrite.zip(allExuParams)
   println(s"[intRespWriteWithParams] is ${intRespWriteWithParams}")
-  intRespWriteWithParams.foreach{ case(l,r) =>
+  intRespWriteWithParams.foreach { case (l, r) =>
     println(s"FuBusyTableWriteBundle is ${l}, ExeUnitParams is ${r}")
   }
   private val vfRespWriteWithParams = vfAllRespWrite.zip(allExuParams)
 
-  private val intWBAllFuGroup = params.getIntWBExeGroup.map{ case(groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs)) }
-  private val intWBFuGroup = params.getIntWBExeGroup.map{ case(groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs).filter(_.writeIntRf)) }
-  private val intLatencyCertains = intWBAllFuGroup.map{case (k,v) => (k, v.map(_.latency.latencyVal.nonEmpty).reduce(_ && _))}
-  private val intWBFuLatencyMap = intLatencyCertains.map{case (k, latencyCertain) =>
+  private val intWBAllFuGroup = params.getIntWBExeGroup.map { case (groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs)) }
+  private val intWBFuGroup = params.getIntWBExeGroup.map { case (groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs).filter(_.writeIntRf)) }
+  private val intLatencyCertains = intWBAllFuGroup.map { case (k, v) => (k, v.map(_.latency.latencyVal.nonEmpty).reduce(_ && _)) }
+  private val intWBFuLatencyMap = intLatencyCertains.map { case (k, latencyCertain) =>
     if (latencyCertain) Some(intWBFuGroup(k).map(y => (y.fuType, y.latency.latencyVal.get)))
     else None
   }.toSeq
-  private val intWBFuLatencyValMax = intWBFuLatencyMap.map(latencyMap=> latencyMap.map(x => x.map(_._2).max))
+  private val intWBFuLatencyValMax = intWBFuLatencyMap.map(latencyMap => latencyMap.map(x => x.map(_._2).max))
 
-  private val vfWBAllFuGroup = params.getVfWBExeGroup.map{ case(groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs)) }
-  private val vfWBFuGroup = params.getVfWBExeGroup.map{ case(groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs).filter(x => x.writeFpRf || x.writeVecRf)) }
-  private val vfLatencyCertains = vfWBAllFuGroup.map{case (k,v) => (k, v.map(_.latency.latencyVal.nonEmpty).reduce(_ && _))}
+  private val vfWBAllFuGroup = params.getVfWBExeGroup.map { case (groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs)) }
+  private val vfWBFuGroup = params.getVfWBExeGroup.map { case (groupId, exeUnit) => (groupId, exeUnit.flatMap(_.fuConfigs).filter(x => x.writeFpRf || x.writeVecRf)) }
+  private val vfLatencyCertains = vfWBAllFuGroup.map { case (k, v) => (k, v.map(_.latency.latencyVal.nonEmpty).reduce(_ && _)) }
   val vfWBFuLatencyMap = vfLatencyCertains.map { case (k, latencyCertain) =>
     if (latencyCertain) Some(vfWBFuGroup(k).map(y => (y.fuType, y.latency.latencyVal.get)))
     else None
   }.toSeq
   private val vfWBFuLatencyValMax = vfWBFuLatencyMap.map(latencyMap => latencyMap.map(x => x.map(_._2).max))
 
-  private val intWBFuBusyTable = intWBFuLatencyValMax.map { case y => if (y.getOrElse(0)>0) Some(Reg(UInt(y.getOrElse(1).W))) else None }
-  println(s"[intWBFuBusyTable] is ${intWBFuBusyTable.map(x => x) }")
-  private val vfWBFuBusyTable = vfWBFuLatencyValMax.map { case y => if (y.getOrElse(0)>0) Some(Reg(UInt(y.getOrElse(1).W))) else None }
-  println(s"[vfWBFuBusyTable] is ${vfWBFuBusyTable.map(x => x) }")
+  private val intWBFuBusyTable = intWBFuLatencyValMax.map { case y => if (y.getOrElse(0) > 0) Some(Reg(UInt(y.getOrElse(1).W))) else None }
+  println(s"[intWBFuBusyTable] is ${intWBFuBusyTable.map(x => x)}")
+  private val vfWBFuBusyTable = vfWBFuLatencyValMax.map { case y => if (y.getOrElse(0) > 0) Some(Reg(UInt(y.getOrElse(1).W))) else None }
+  println(s"[vfWBFuBusyTable] is ${vfWBFuBusyTable.map(x => x)}")
 
   private val intWBPortConflictFlag = intWBFuLatencyValMax.map { case y => if (y.getOrElse(0) > 0) Some(Reg(Bool())) else None }
   private val vfWBPortConflictFlag = vfWBFuLatencyValMax.map { case y => if (y.getOrElse(0) > 0) Some(Reg(Bool())) else None }
 
-  intWBPortConflictFlag.foreach(x => if(x.isDefined) dontTouch((x.get)))
-  vfWBPortConflictFlag.foreach(x => if(x.isDefined) dontTouch((x.get)))
+  intWBPortConflictFlag.foreach(x => if (x.isDefined) dontTouch((x.get)))
+  vfWBPortConflictFlag.foreach(x => if (x.isDefined) dontTouch((x.get)))
 
 
   intWBFuBusyTable.map(x => x.map(dontTouch(_)))
@@ -162,61 +167,74 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   intWBFuBusyTableWithPort.zip(intWBPortConflictFlag).zip(intWBFuLatencyValMax).foreach {
     case (((busyTable, wbPort), wbPortConflictFlag), maxLatency) =>
       if (busyTable.nonEmpty) {
-      val maskWidth = maxLatency.getOrElse(0)
-      val defaultMask = ((1 << maskWidth) - 1).U
-      val deqWbFuBusyTableValue = intRespWriteWithParams.zipWithIndex.filter { case ((r, p), idx) =>
-        (p.wbPortConfigs.collectFirst{ case x: IntWB => x.port }.getOrElse(-1)) == wbPort
-      }.map{case ((r, p), idx) =>
-        val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
-        Mux(resps(0).valid && resps(0).bits.respType === RSFeedbackType.issueSuccess,
-          VecInit((0 until maxLatency.getOrElse(0) + 1).map { case latency =>
-          val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == latency).map(_.fuType)
-          val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(0).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
-            isLatencyNum
-          }).asUInt,
-          0.U)
-      }
-//        deqWbFuBusyTableValue.foreach(x => dontTouch(x))
-      val deqIsLatencyNumMask = (deqWbFuBusyTableValue.reduce(_ | _) >> 1).asUInt
-      wbPortConflictFlag.get := deqWbFuBusyTableValue.reduce(_ & _).orR
+        val maskWidth = maxLatency.getOrElse(0)
+        val defaultMask = ((1 << maskWidth) - 1).U
+        val deqWbFuBusyTableValue = intRespWriteWithParams.zipWithIndex.filter { case ((r, p), idx) =>
+          (p.wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
+        }.map { case ((r, p), idx) =>
+          val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
+          Mux(
+            resps(0).valid && resps(0).bits.respType === RSFeedbackType.issueSuccess,
+            VecInit((0 until maxLatency.getOrElse(0) + 1).map { case latency =>
+              val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == latency).map(_.fuType)
+              val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(0).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
+              isLatencyNum
+            }
+            ).asUInt,
+            0.U
+          )
+        }
+        //        deqWbFuBusyTableValue.foreach(x => dontTouch(x))
+        val deqIsLatencyNumMask = (deqWbFuBusyTableValue.reduce(_ | _) >> 1).asUInt
+        wbPortConflictFlag.get := deqWbFuBusyTableValue.reduce(_ & _).orR
 
-      val og0IsLatencyNumMask = WireInit(defaultMask)
-      og0IsLatencyNumMask := intRespWriteWithParams.zipWithIndex.map { case ((r, p), idx) =>
-        val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
-        val matchI = (p.wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
-        if (matchI) {
-          Mux(resps(1).valid && resps(1).bits.respType === RSFeedbackType.rfArbitFail,
-            (~(Cat(VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
-              val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
-              val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(1).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
-              isLatencyNum
-            }).asUInt, 0.U(1.W)))).asUInt,
-            defaultMask)
-        } else defaultMask
-      }.reduce(_&_)
-      val og1IsLatencyNumMask = WireInit(defaultMask)
-      og1IsLatencyNumMask := intRespWriteWithParams.zipWithIndex.map { case ((r, p), idx) =>
-        val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
-        val matchI = (p.wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
-        if (matchI && resps.length==3) {
-          Mux(resps(2).valid && resps(2).bits.respType === RSFeedbackType.fuBusy,
-            (~(Cat(VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
-              val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
-              val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(2).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
-              isLatencyNum
-            }).asUInt, 0.U(2.W)))).asUInt,
-            defaultMask)
-        } else defaultMask
-      }.reduce(_ & _)
-      dontTouch(deqIsLatencyNumMask)
-      dontTouch(og0IsLatencyNumMask)
-      dontTouch(og1IsLatencyNumMask)
-      busyTable.get := ((busyTable.get >> 1.U).asUInt() | deqIsLatencyNumMask) & og0IsLatencyNumMask.asUInt() & og1IsLatencyNumMask.asUInt()
-    }
+        val og0IsLatencyNumMask = WireInit(defaultMask)
+        og0IsLatencyNumMask := intRespWriteWithParams.zipWithIndex.map { case ((r, p), idx) =>
+          val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
+          val matchI = (p.wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
+          if (matchI) {
+            Mux(
+              resps(1).valid && resps(1).bits.respType === RSFeedbackType.rfArbitFail,
+              (~(Cat(
+                VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
+                  val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
+                  val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(1).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
+                  isLatencyNum
+                }
+                ).asUInt, 0.U(1.W)
+              ))).asUInt,
+              defaultMask
+            )
+          } else defaultMask
+        }.reduce(_ & _)
+        val og1IsLatencyNumMask = WireInit(defaultMask)
+        og1IsLatencyNumMask := intRespWriteWithParams.zipWithIndex.map { case ((r, p), idx) =>
+          val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
+          val matchI = (p.wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
+          if (matchI && resps.length == 3) {
+            Mux(
+              resps(2).valid && resps(2).bits.respType === RSFeedbackType.fuBusy,
+              (~(Cat(
+                VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
+                  val latencyNumFuType = p.writeIntFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
+                  val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(2).bits.fuType === futype.U)).asUInt().orR() // The latency of the deqResp inst is Num
+                  isLatencyNum
+                }
+                ).asUInt, 0.U(2.W)
+              ))).asUInt,
+              defaultMask
+            )
+          } else defaultMask
+        }.reduce(_ & _)
+        dontTouch(deqIsLatencyNumMask)
+        dontTouch(og0IsLatencyNumMask)
+        dontTouch(og1IsLatencyNumMask)
+        busyTable.get := ((busyTable.get >> 1.U).asUInt() | deqIsLatencyNumMask) & og0IsLatencyNumMask.asUInt() & og1IsLatencyNumMask.asUInt()
+      }
   }
   // intWBFuBusyTable read
-  for(i <- 0 until intAllRespRead.size){
-    if(intAllRespRead(i).isDefined){
+  for (i <- 0 until intAllRespRead.size) {
+    if (intAllRespRead(i).isDefined) {
       intAllRespRead(i).get := intWBFuBusyTableWithPort.map { case (busyTable, wbPort) =>
         val matchI = (allExuParams(i).wbPortConfigs.collectFirst { case x: IntWB => x.port }.getOrElse(-1)) == wbPort
         if (busyTable.nonEmpty && matchI) {
@@ -240,22 +258,25 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   private val vfWBFuBusyTableWithPort = vfWBFuBusyTable.zip(vfWBFuGroup.map(_._1))
   private val vfWBPortConflictFlagWithPort = vfWBPortConflictFlag.zip(vfWBFuGroup.map(_._1))
   // vfWBFuBusyTable write
-  vfWBFuBusyTableWithPort.zip(vfWBPortConflictFlag).zip(vfWBFuLatencyValMax).foreach{
-    case(((busyTable, wbPort), wbPortConflictFlag), maxLatency) =>
-      if(busyTable.nonEmpty){
+  vfWBFuBusyTableWithPort.zip(vfWBPortConflictFlag).zip(vfWBFuLatencyValMax).foreach {
+    case (((busyTable, wbPort), wbPortConflictFlag), maxLatency) =>
+      if (busyTable.nonEmpty) {
         val maskWidth = maxLatency.getOrElse(0)
         val defaultMask = ((1 << maskWidth) - 1).U
         val deqWbFuBusyTableValue = vfRespWriteWithParams.zipWithIndex.filter { case ((_, p), _) =>
           (p.wbPortConfigs.collectFirst { case x: VfWB => x.port }.getOrElse(-1)) == wbPort
         }.map { case ((r, p), _) =>
           val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
-          Mux(resps(0).valid && resps(0).bits.respType === RSFeedbackType.issueSuccess,
+          Mux(
+            resps(0).valid && resps(0).bits.respType === RSFeedbackType.issueSuccess,
             VecInit((0 until maxLatency.getOrElse(0) + 1).map { case latency =>
               val latencyNumFuType = p.writeVfFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == latency).map(_.fuType)
               val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(0).bits.fuType === futype.U)).asUInt.orR // The latency of the deqResp inst is Num
               isLatencyNum
-            }).asUInt,
-            0.U)
+            }
+            ).asUInt,
+            0.U
+          )
         }
         val deqIsLatencyNumMask = (deqWbFuBusyTableValue.reduce(_ | _) >> 1).asUInt
         wbPortConflictFlag.get := deqWbFuBusyTableValue.reduce(_ & _).orR
@@ -265,13 +286,18 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
           val resps = Seq(r.deqResp, r.og0Resp, r.og1Resp)
           val matchI = (p.wbPortConfigs.collectFirst { case x: VfWB => x.port }.getOrElse(-1)) == wbPort
           if (matchI) {
-            Mux(resps(1).valid && resps(1).bits.respType === RSFeedbackType.rfArbitFail,
-              (~(Cat(VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
-                val latencyNumFuType = p.writeVfFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
-                val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(1).bits.fuType === futype.U)).asUInt.orR // The latency of the deqResp inst is Num
-                isLatencyNum
-              }).asUInt, 0.U(1.W)))).asUInt,
-              defaultMask)
+            Mux(
+              resps(1).valid && resps(1).bits.respType === RSFeedbackType.rfArbitFail,
+              (~(Cat(
+                VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
+                  val latencyNumFuType = p.writeVfFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
+                  val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(1).bits.fuType === futype.U)).asUInt.orR // The latency of the deqResp inst is Num
+                  isLatencyNum
+                }
+                ).asUInt, 0.U(1.W)
+              ))).asUInt,
+              defaultMask
+            )
           } else defaultMask
         }.reduce(_ & _)
         val og1IsLatencyNumMask = WireInit(defaultMask)
@@ -280,13 +306,18 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
 
           val matchI = (p.wbPortConfigs.collectFirst { case x: VfWB => x.port }.getOrElse(-1)) == wbPort
           if (matchI && resps.length == 3) {
-            Mux(resps(2).valid && resps(2).bits.respType === RSFeedbackType.fuBusy,
-              (~(Cat(VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
-                val latencyNumFuType = p.writeVfFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
-                val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(2).bits.fuType === futype.U)).asUInt.orR // The latency of the deqResp inst is Num
-                isLatencyNum
-              }).asUInt, 0.U(2.W)))).asUInt,
-              defaultMask)
+            Mux(
+              resps(2).valid && resps(2).bits.respType === RSFeedbackType.fuBusy,
+              (~(Cat(
+                VecInit((0 until maxLatency.getOrElse(0)).map { case num =>
+                  val latencyNumFuType = p.writeVfFuConfigs.filter(_.latency.latencyVal.getOrElse(-1) == num + 1).map(_.fuType)
+                  val isLatencyNum = Cat(latencyNumFuType.map(futype => resps(2).bits.fuType === futype.U)).asUInt.orR // The latency of the deqResp inst is Num
+                  isLatencyNum
+                }
+                ).asUInt, 0.U(2.W)
+              ))).asUInt,
+              defaultMask
+            )
           } else defaultMask
         }.reduce(_ & _)
         dontTouch(deqIsLatencyNumMask)
@@ -298,7 +329,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
 
   // vfWBFuBusyTable read
   for (i <- 0 until vfAllRespRead.size) {
-    if(vfAllRespRead(i).isDefined){
+    if (vfAllRespRead(i).isDefined) {
       vfAllRespRead(i).get := vfWBFuBusyTableWithPort.map { case (busyTable, wbPort) =>
         val matchI = (allExuParams(i).wbPortConfigs.collectFirst { case x: VfWB => x.port }.getOrElse(-1)) == wbPort
         if (busyTable.nonEmpty && matchI) {
@@ -309,7 +340,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
       }.reduce(_ | _)
     }
 
-    if(vfAllWbConflictFlag(i).isDefined){
+    if (vfAllWbConflictFlag(i).isDefined) {
       vfAllWbConflictFlag(i).get := vfWBPortConflictFlagWithPort.map { case (conflictFlag, wbPort) =>
         val matchI = (allExuParams(i).wbPortConfigs.collectFirst { case x: VfWB => x.port }.getOrElse(-1)) == wbPort
         if (conflictFlag.nonEmpty && matchI) {
@@ -320,6 +351,10 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   }
 
   private val vconfig = dataPath.io.vconfigReadPort.data
+  private val og0CancelVec: Vec[Bool] = VecInit(dataPath.io.toIQCancelVec.map(_("OG0")))
+  private val og1CancelVec: Vec[Bool] = VecInit(dataPath.io.toIQCancelVec.map(_("OG1")))
+  dontTouch(og0CancelVec)
+  dontTouch(og1CancelVec)
 
   ctrlBlock.io.fromTop.hartId := io.fromTop.hartId
   ctrlBlock.io.frontend <> io.frontend
@@ -343,7 +378,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   intScheduler.io.intWriteBack := wbDataPath.io.toIntPreg
   intScheduler.io.vfWriteBack := 0.U.asTypeOf(intScheduler.io.vfWriteBack)
   intScheduler.io.fromDataPath.resp := dataPath.io.toIntIQ
-  intScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  intScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.exuIdx) }
   intScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
 
   memScheduler.io.fromTop.hartId := io.fromTop.hartId
@@ -365,7 +400,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   memScheduler.io.fromDataPath.resp := dataPath.io.toMemIQ
   memScheduler.io.fromMem.get.ldaFeedback := io.mem.ldaIqFeedback
   memScheduler.io.fromMem.get.staFeedback := io.mem.staIqFeedback
-  memScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  memScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.exuIdx) }
   memScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
 
   vfScheduler.io.fromTop.hartId := io.fromTop.hartId
@@ -375,7 +410,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   vfScheduler.io.intWriteBack := 0.U.asTypeOf(vfScheduler.io.intWriteBack)
   vfScheduler.io.vfWriteBack := wbDataPath.io.toVfPreg
   vfScheduler.io.fromDataPath.resp := dataPath.io.toVfIQ
-  vfScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.wakeupSource) }
+  vfScheduler.io.fromSchedulers.wakeupVec.foreach { wakeup => wakeup := iqWakeUpMappedBundle(wakeup.bits.exuIdx) }
   vfScheduler.io.fromDataPath.cancel.foreach(x => x.cancelVec := dataPath.io.toIQCancelVec(x.exuIdx).cancelVec)
 
   dataPath.io.flush := ctrlBlock.io.toDataPath.flush
@@ -383,22 +418,31 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
 
   for (i <- 0 until dataPath.io.fromIntIQ.length) {
     for (j <- 0 until dataPath.io.fromIntIQ(i).length) {
-      NewPipelineConnect(intScheduler.io.toDataPath(i)(j), dataPath.io.fromIntIQ(i)(j), dataPath.io.fromIntIQ(i)(j).valid,
-        intScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush), Option("intScheduler2DataPathPipe"))
+      NewPipelineConnect(
+        intScheduler.io.toDataPath(i)(j), dataPath.io.fromIntIQ(i)(j), dataPath.io.fromIntIQ(i)(j).valid,
+        dontTouch(intScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush) | intScheduler.io.toDataPath(i)(j).bits.common.needCancel(og0CancelVec, og1CancelVec)),
+        Option("intScheduler2DataPathPipe")
+      )
     }
   }
 
   for (i <- 0 until dataPath.io.fromVfIQ.length) {
     for (j <- 0 until dataPath.io.fromVfIQ(i).length) {
-      NewPipelineConnect(vfScheduler.io.toDataPath(i)(j), dataPath.io.fromVfIQ(i)(j), dataPath.io.fromVfIQ(i)(j).valid,
-        vfScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush), Option("vfScheduler2DataPathPipe"))
+      NewPipelineConnect(
+        vfScheduler.io.toDataPath(i)(j), dataPath.io.fromVfIQ(i)(j), dataPath.io.fromVfIQ(i)(j).valid,
+        dontTouch(vfScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush) | vfScheduler.io.toDataPath(i)(j).bits.common.needCancel(og0CancelVec, og1CancelVec)),
+        Option("vfScheduler2DataPathPipe")
+      )
     }
   }
 
   for (i <- 0 until dataPath.io.fromMemIQ.length) {
     for (j <- 0 until dataPath.io.fromMemIQ(i).length) {
-      NewPipelineConnect(memScheduler.io.toDataPath(i)(j), dataPath.io.fromMemIQ(i)(j), dataPath.io.fromMemIQ(i)(j).valid,
-        memScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush), Option("memScheduler2DataPathPipe"))
+      NewPipelineConnect(
+        memScheduler.io.toDataPath(i)(j), dataPath.io.fromMemIQ(i)(j), dataPath.io.fromMemIQ(i)(j).valid,
+        dontTouch(memScheduler.io.toDataPath(i)(j).bits.common.robIdx.needFlush(ctrlBlock.io.toDataPath.flush) | memScheduler.io.toDataPath(i)(j).bits.common.needCancel(og0CancelVec, og1CancelVec)),
+        Option("memScheduler2DataPathPipe")
+      )
     }
   }
 
@@ -412,7 +456,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   dataPath.io.debugVconfigRat := ctrlBlock.io.debug_vconfig_rat
 
   bypassNetwork.io.fromDataPath.int <> dataPath.io.toIntExu
-  bypassNetwork.io.fromDataPath.vf  <> dataPath.io.toFpExu
+  bypassNetwork.io.fromDataPath.vf <> dataPath.io.toFpExu
   bypassNetwork.io.fromDataPath.mem <> dataPath.io.toMemExu
   bypassNetwork.io.fromExus.connectExuOutput(_.int)(intExuBlock.io.out)
   bypassNetwork.io.fromExus.connectExuOutput(_.vf)(vfExuBlock.io.out)
@@ -425,10 +469,14 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   intExuBlock.io.flush := ctrlBlock.io.toExuBlock.flush
   for (i <- 0 until intExuBlock.io.in.length) {
     for (j <- 0 until intExuBlock.io.in(i).length) {
-      NewPipelineConnect(bypassNetwork.io.toExus.int(i)(j), intExuBlock.io.in(i)(j), intExuBlock.io.in(i)(j).fire,
-        Mux(bypassNetwork.io.toExus.int(i)(j).fire,
+      NewPipelineConnect(
+        bypassNetwork.io.toExus.int(i)(j), intExuBlock.io.in(i)(j), intExuBlock.io.in(i)(j).fire,
+        Mux(
+          bypassNetwork.io.toExus.int(i)(j).fire,
           bypassNetwork.io.toExus.int(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush),
-          intExuBlock.io.in(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush)))
+          intExuBlock.io.in(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush)
+        )
+      )
     }
   }
 
@@ -465,10 +513,14 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   vfExuBlock.io.flush := ctrlBlock.io.toExuBlock.flush
   for (i <- 0 until vfExuBlock.io.in.size) {
     for (j <- 0 until vfExuBlock.io.in(i).size) {
-      NewPipelineConnect(bypassNetwork.io.toExus.vf(i)(j), vfExuBlock.io.in(i)(j), vfExuBlock.io.in(i)(j).fire,
-        Mux(bypassNetwork.io.toExus.vf(i)(j).fire,
+      NewPipelineConnect(
+        bypassNetwork.io.toExus.vf(i)(j), vfExuBlock.io.in(i)(j), vfExuBlock.io.in(i)(j).fire,
+        Mux(
+          bypassNetwork.io.toExus.vf(i)(j).fire,
           bypassNetwork.io.toExus.vf(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush),
-          vfExuBlock.io.in(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush)))
+          vfExuBlock.io.in(i)(j).bits.robIdx.needFlush(ctrlBlock.io.toExuBlock.flush)
+        )
+      )
     }
   }
   vfExuBlock.io.frm.foreach(_ := csrio.fpu.frm)
@@ -480,8 +532,8 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   wbDataPath.io.fromMemExu.flatten.zip(io.mem.writeBack).foreach { case (sink, source) =>
     sink.valid := source.valid
     source.ready := sink.ready
-    sink.bits.data   := source.bits.data
-    sink.bits.pdest  := source.bits.uop.pdest
+    sink.bits.data := source.bits.data
+    sink.bits.pdest := source.bits.uop.pdest
     sink.bits.robIdx := source.bits.uop.robIdx
     sink.bits.intWen.foreach(_ := source.bits.uop.rfWen)
     sink.bits.fpWen.foreach(_ := source.bits.uop.fpWen)
@@ -516,24 +568,24 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   io.mem.issueUops.zip(toMem.flatten).foreach { case (sink, source) =>
     sink.valid := source.valid
     source.ready := sink.ready
-    sink.bits.iqIdx         := source.bits.iqIdx
-    sink.bits.isFirstIssue  := source.bits.isFirstIssue
-    sink.bits.uop           := 0.U.asTypeOf(sink.bits.uop)
-    sink.bits.src           := 0.U.asTypeOf(sink.bits.src)
-    sink.bits.src.zip(source.bits.src).foreach { case (l, r) => l := r}
-    sink.bits.uop.fuType    := source.bits.fuType
-    sink.bits.uop.fuOpType  := source.bits.fuOpType
-    sink.bits.uop.imm       := source.bits.imm
-    sink.bits.uop.robIdx    := source.bits.robIdx
-    sink.bits.uop.pdest     := source.bits.pdest
-    sink.bits.uop.rfWen     := source.bits.rfWen.getOrElse(false.B)
-    sink.bits.uop.fpWen     := source.bits.fpWen.getOrElse(false.B)
-    sink.bits.uop.vecWen    := source.bits.vecWen.getOrElse(false.B)
+    sink.bits.iqIdx := source.bits.iqIdx
+    sink.bits.isFirstIssue := source.bits.isFirstIssue
+    sink.bits.uop := 0.U.asTypeOf(sink.bits.uop)
+    sink.bits.src := 0.U.asTypeOf(sink.bits.src)
+    sink.bits.src.zip(source.bits.src).foreach { case (l, r) => l := r }
+    sink.bits.uop.fuType := source.bits.fuType
+    sink.bits.uop.fuOpType := source.bits.fuOpType
+    sink.bits.uop.imm := source.bits.imm
+    sink.bits.uop.robIdx := source.bits.robIdx
+    sink.bits.uop.pdest := source.bits.pdest
+    sink.bits.uop.rfWen := source.bits.rfWen.getOrElse(false.B)
+    sink.bits.uop.fpWen := source.bits.fpWen.getOrElse(false.B)
+    sink.bits.uop.vecWen := source.bits.vecWen.getOrElse(false.B)
     sink.bits.uop.flushPipe := source.bits.flushPipe.getOrElse(false.B)
-    sink.bits.uop.pc        := source.bits.pc.getOrElse(0.U)
-    sink.bits.uop.lqIdx     := source.bits.lqIdx.getOrElse(0.U.asTypeOf(new LqPtr))
-    sink.bits.uop.sqIdx     := source.bits.sqIdx.getOrElse(0.U.asTypeOf(new SqPtr))
-    sink.bits.uop.ftqPtr    := source.bits.ftqIdx.getOrElse(0.U.asTypeOf(new FtqPtr))
+    sink.bits.uop.pc := source.bits.pc.getOrElse(0.U)
+    sink.bits.uop.lqIdx := source.bits.lqIdx.getOrElse(0.U.asTypeOf(new LqPtr))
+    sink.bits.uop.sqIdx := source.bits.sqIdx.getOrElse(0.U.asTypeOf(new SqPtr))
+    sink.bits.uop.ftqPtr := source.bits.ftqIdx.getOrElse(0.U.asTypeOf(new FtqPtr))
     sink.bits.uop.ftqOffset := source.bits.ftqOffset.getOrElse(0.U)
   }
   io.mem.loadFastMatch := memScheduler.io.toMem.get.loadFastMatch.map(_.fastMatch)
@@ -597,10 +649,10 @@ class BackendMemIO(implicit p: Parameters, params: BackendParams) extends XSBund
   val csrDistributedUpdate = Flipped(new DistributedCSRUpdateReq)
 
   // Output
-  val redirect = ValidIO(new Redirect)   // rob flush MemBlock
+  val redirect = ValidIO(new Redirect) // rob flush MemBlock
   val issueUops = MixedVec(Seq.fill(params.LduCnt + params.StaCnt * 2)(DecoupledIO(new MemExuInput())) ++ Seq.fill(params.VlduCnt)(DecoupledIO(new MemExuInput(true))))
   val loadFastMatch = Vec(params.LduCnt, Output(UInt(params.LduCnt.W)))
-  val loadFastImm   = Vec(params.LduCnt, Output(UInt(12.W))) // Imm_I
+  val loadFastImm = Vec(params.LduCnt, Output(UInt(12.W))) // Imm_I
 
   val tlbCsr = Output(new TlbCsrBundle)
   val csrCtrl = Output(new CustomCSRCtrlIO)

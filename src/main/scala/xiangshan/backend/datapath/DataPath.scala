@@ -418,7 +418,8 @@ class DataPathImp(override val wrapper: DataPath)(implicit p: Parameters, params
       val s0 = fromIQ(i)(j) // s0
       val block = (intBlocks(i)(j) || !intNotBlocksW(i)(j)) || (vfBlocks(i)(j) || !vfNotBlocksW(i)(j))
       val s1_flush = s0.bits.common.robIdx.needFlush(Seq(io.flush, RegNextWithEnable(io.flush)))
-      when (s0.fire && !s1_flush && !block) {
+      val s1_cancel = og1FailedVec2(i)(j)
+      when (s0.fire && !s1_flush && !block && !s1_cancel) {
         s1_valid := s0.valid
         s1_data.fromIssueBundle(s0.bits) // no src data here
         s1_addrOH := s0.bits.addrOH
