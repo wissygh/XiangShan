@@ -176,7 +176,10 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
         case Some(value) => value := 0.U.asTypeOf(value)
         case None =>
       }
-      enq.bits.data.srcTimer.foreach(_ := 0.U)
+      enq.bits.data.srcTimer match {
+        case Some(value) => value := 0.U.asTypeOf(value)
+        case None =>
+      }
     }
     statusArrayIO.deq.zipWithIndex.foreach { case (deq, i) =>
       deq.deqSelOH.valid  := finalDeqSelValidVec(i)
