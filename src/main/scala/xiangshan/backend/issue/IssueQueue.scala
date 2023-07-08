@@ -389,7 +389,14 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
     deq.bits.common.robIdx := payloadArrayRdata(i).robIdx
     deq.bits.common.imm := immArrayRdataVec(i)
     println(s"[tmp] dataSources.size(${deq.bits.common.dataSources.size}), finalDataSources(i).size(${finalDataSources(i).size})")
-    deq.bits.common.dataSources.zip(finalDataSources(i)).foreach { case (sink, source) => sink.value := source.value }
+    deq.bits.common.dataSources.zip(finalDataSources(i)).zipWithIndex.foreach {
+      case ((sink, source), srcIdx) =>
+        sink.value := Mux(
+          SrcType.isXp(payloadArrayRdata(i).srcType(srcIdx)) && payloadArrayRdata(i).psrc(srcIdx) === 0.U,
+          DataSource.none,
+          source.value
+        )
+    }
     deq.bits.common.l1ExuVec.foreach(_ := finalWakeUpL1ExuOH.get(i))
     deq.bits.common.l2ExuVec.foreach(_ := finalWakeUpL2ExuVec.get(i))
 

@@ -15,6 +15,9 @@ class DataSource extends Bundle {
 object DataSource {
   def apply() = new DataSource
 
+  // no need for read any data
+  def none: UInt = "b00".U
+
   def reg: UInt = "b00".U
 
   def forward: UInt = "b01".U
