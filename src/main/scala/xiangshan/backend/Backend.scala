@@ -355,7 +355,7 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
   private val vconfig = dataPath.io.vconfigReadPort.data
   private val og1CancelVec: Vec[Bool] = VecInit(dataPath.io.toIQCancelVec.map(_("OG1")))
   private val og0CancelVecFromDataPath: Vec[Bool] = VecInit(dataPath.io.toIQCancelVec.map(_("OG0")))
-  private val og0CancelVecFromCancelNet: Vec[Bool] = VecInit(cancelNetwork.io.out.og0CancelVec)
+  private val og0CancelVecFromCancelNet: Vec[Bool] = cancelNetwork.io.out.og0CancelVec
   private val og0CancelVec: Vec[Bool] = VecInit(og0CancelVecFromDataPath.zip(og0CancelVecFromCancelNet).map(x => x._1 | x._2))
   dontTouch(og0CancelVecFromDataPath)
   dontTouch(og0CancelVecFromCancelNet)
