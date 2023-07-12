@@ -43,7 +43,8 @@ class IssueQueueIO()(implicit p: Parameters, params: IssueBlockParams) extends X
   val wbBusyTableRead: MixedVec[WbFuBusyTableReadBundle] = Input(params.genWbFuBusyTableReadBundle())
   val wakeupFromWB: MixedVec[ValidIO[IssueQueueWBWakeUpBundle]] = Flipped(params.genWBWakeUpSinkValidBundle)
   val wakeupFromIQ: MixedVec[ValidIO[IssueQueueIQWakeUpBundle]] = Flipped(params.genIQWakeUpSinkValidBundle)
-  val cancelFromDataPath: MixedVec[IssueQueueCancelBundle] = Input(params.genCancelBundle(cancelStages))
+  val og0Cancel = Input(ExuVec(backendParams.numExu))
+  val og1Cancel = Input(ExuVec(backendParams.numExu))
 
   // Outputs
   val deq: MixedVec[DecoupledIO[IssueQueueIssueBundle]] = params.genIssueDecoupledBundle
@@ -154,7 +155,8 @@ class IssueQueueImp(override val wrapper: IssueQueue)(implicit p: Parameters, va
   statusArray.io match { case statusArrayIO: StatusArrayIO =>
     statusArrayIO.flush  <> io.flush
     statusArrayIO.wakeUpFromIQ := io.wakeupFromIQ
-    statusArrayIO.cancelFromDataPath := io.cancelFromDataPath
+    statusArrayIO.og0Cancel := io.og0Cancel
+    statusArrayIO.og1Cancel := io.og1Cancel
     statusArrayIO.wakeUpFromWB := io.wakeupFromWB
     statusArrayIO.enq.zipWithIndex.foreach { case (enq: ValidIO[StatusArrayEnqBundle], i) =>
       enq.valid                 := s0_doEnqSelValidVec(i)

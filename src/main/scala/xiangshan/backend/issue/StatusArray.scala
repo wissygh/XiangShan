@@ -83,8 +83,8 @@ class StatusArrayIO(implicit p: Parameters, params: IssueBlockParams) extends XS
   // wakeup
   val wakeUpFromWB: MixedVec[ValidIO[IssueQueueWBWakeUpBundle]] = Flipped(params.genWBWakeUpSinkValidBundle)
   val wakeUpFromIQ: MixedVec[ValidIO[IssueQueueIQWakeUpBundle]] = Flipped(params.genIQWakeUpSinkValidBundle)
-
-  val cancelFromDataPath: MixedVec[IssueQueueCancelBundle] = Input(params.genCancelBundle(cancelStages))
+  val og0Cancel = Input(ExuVec(backendParams.numExu))
+  val og1Cancel = Input(ExuVec(backendParams.numExu))
   // deq
   val deq = Vec(params.numDeq, new StatusArrayDeqBundle)
   val deqResp = Vec(params.numDeq, Flipped(ValidIO(new StatusArrayDeqRespBundle)))
@@ -142,20 +142,13 @@ class StatusArray()(implicit p: Parameters, params: IssueBlockParams) extends XS
     srcCancelVec2.get.zipWithIndex.foreach { case (srcCancelVec, entryIdx) =>
       srcCancelVec.zipWithIndex.foreach { case (srcCancel, srcIdx) =>
         // level1 cancel: A(s)->C, A(s) are the level1 cancel
-        val level1CancelStageSelOH = VecInit(io.cancelFromDataPath.map(x => statusVec(entryIdx).srcWakeUpL1ExuOH.get(srcIdx)(x.exuIdx)))
-        val level1CancelStageBundle = Mux1H(level1CancelStageSelOH, io.cancelFromDataPath)
-        val level1Cancel =
-          level1CancelStageBundle.cancelVec(1) && statusVec(entryIdx).srcTimer.get(srcIdx) === 1.U ||
-          level1CancelStageBundle.cancelVec(2) && statusVec(entryIdx).srcTimer.get(srcIdx) === 2.U
+        val l1Cancel = (io.og0Cancel.asUInt & statusVec(entryIdx).srcWakeUpL1ExuOH.get(srcIdx).asUInt).orR &&
+          statusVec(entryIdx).srcTimer.get(srcIdx) === 1.U
         // level2 cancel: A(s)->B(s)->C, A(s) are the level2 cancel
         // level2 cancel source exu may be more than 1
-        val level2CancelStageSelVec = io.cancelFromDataPath.map(x => statusVec(entryIdx).srcWakeUpL2ExuVec.get(srcIdx)(x.exuIdx))
-        val level2Cancel = VecInit(level2CancelStageSelVec.zip(io.cancelFromDataPath).map{ case (valid, cancelBundle) =>
-          valid && (
-            cancelBundle.cancelVec(2) && statusVec(entryIdx).srcTimer.get(srcIdx) === 1.U
-          )
-        }).asUInt.orR
-        srcCancel := level1Cancel || level2Cancel
+        val l2Cancel = (io.og1Cancel.asUInt & statusVec(entryIdx).srcWakeUpL2ExuVec.get(srcIdx).asUInt).orR &&
+          statusVec(entryIdx).srcTimer.get(srcIdx) === 2.U
+        srcCancel := l1Cancel || l2Cancel
       }
     }
   }
