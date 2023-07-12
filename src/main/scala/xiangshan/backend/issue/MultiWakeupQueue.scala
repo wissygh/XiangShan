@@ -27,7 +27,7 @@ class MultiWakeupQueue[T <: Data, TFlush <: Data](
 ) extends Module {
   require(latencySet.min >= 0)
 
-  val io = IO(new MultiWakeupQueueIO(gen, flushGen, log2Up(latencySet.max)))
+  val io = IO(new MultiWakeupQueueIO(gen, flushGen, log2Up(latencySet.max) + 1))
 
   val pipes = latencySet.map(x => Module(new PipeWithFlush[T, TFlush](gen, flushGen, x, flushFunc))).toSeq
 
