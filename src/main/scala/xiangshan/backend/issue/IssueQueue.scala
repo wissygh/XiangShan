@@ -510,6 +510,8 @@ class IssueQueueIntImp(override val wrapper: IssueQueue)(implicit p: Parameters,
     }
   }
 
+  MixedVecInit
+
   io.deq.zipWithIndex.foreach{ case (deq, i) => {
     deq.bits.jmp.foreach((deqJmp: IssueQueueJumpBundle) => {
       deqJmp.pc := pcArray.get.io.read(i).data
@@ -589,7 +591,7 @@ class IssueQueueMemAddrImp(override val wrapper: IssueQueue)(implicit p: Paramet
 
   for (i <- statusArray.io.enq.indices) {
     statusArray.io.enq(i).bits.data match { case enqData =>
-      enqData.blocked := s0_enqBits(i).loadWaitBit
+      enqData.blocked := false.B // s0_enqBits(i).loadWaitBit
       enqData.mem.get.strictWait := s0_enqBits(i).loadWaitStrict
       enqData.mem.get.waitForStd := false.B
       enqData.mem.get.waitForRobIdx := s0_enqBits(i).waitForRobIdx
