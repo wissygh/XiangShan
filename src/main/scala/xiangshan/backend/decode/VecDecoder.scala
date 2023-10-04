@@ -405,6 +405,31 @@ object VecDecoder extends DecodeConstants {
     FMIN_D -> OPFFF(SrcType.fp, SrcType.X, FuType.vfalu, VfaluType.vfmin, F, T, F, UopSplitType.SCA_SIM),
     FMAX_S -> OPFFF(SrcType.fp, SrcType.X, FuType.vfalu, VfaluType.vfmax, F, T, F, UopSplitType.SCA_SIM),
     FMAX_D -> OPFFF(SrcType.fp, SrcType.X, FuType.vfalu, VfaluType.vfmax, F, T, F, UopSplitType.SCA_SIM),
+
+    // Scalar Float Point Convert Inst.
+//    FCVT_S_W    -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_fxv,    F, T, F, UopSplitType.SCA_SIM),   //i32 -> f32
+//    FCVT_S_WU   -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_fxuv,   F, T, F, UopSplitType.SCA_SIM),   //u32 -> f32
+//    FCVT_S_L    -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfncvt_fxw,   F, T, F, UopSplitType.SCA_SIM),   //i64 -> f32
+//    FCVT_S_LU   -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfncvt_fxuw,  F, T, F, UopSplitType.SCA_SIM),   //u64 -> f32
+
+    FCVT_W_S    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_xfv,     T, F, F, UopSplitType.SCA_SIM),   //f32 -> i32
+    FCVT_WU_S   -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_xufv,    T, F, F, UopSplitType.SCA_SIM),   //f32 -> u32
+    FCVT_L_S    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfwcvt_xfv,    T, F, F, UopSplitType.SCA_SIM),   //f32 -> i64
+    FCVT_LU_S   -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfwcvt_xufv,   T, F, F, UopSplitType.SCA_SIM),   //f32 -> u64
+
+//    FCVT_D_W    -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfwcvt_fxv,   F, T, F, UopSplitType.SCA_SIM),   //i32 -> f64
+//    FCVT_D_WU   -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfwcvt_fxuv,  F, T, F, UopSplitType.SCA_SIM),   //u32 -> f64
+//    FCVT_D_L    -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_fxv,    F, T, F, UopSplitType.SCA_SIM),   //i64 -> f64
+//    FCVT_D_LU   -> OPFFF(SrcType.reg, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_fxuv,   F, T, F, UopSplitType.SCA_SIM),   //u64 -> f64
+
+    FCVT_W_D    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfncvt_xfw,    T, F, F, UopSplitType.SCA_SIM),   //f64 -> i32
+    FCVT_WU_D   -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfncvt_xufw,   T, F, F, UopSplitType.SCA_SIM),   //f64 -> u32
+    FCVT_L_D    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_xfv,     T, F, F, UopSplitType.SCA_SIM),   //f64 -> i64
+    FCVT_LU_D   -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfcvt_xufv,    T, F, F, UopSplitType.SCA_SIM),   //f64 -> u64
+
+    FCVT_S_D    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfncvt_ffw,    F, T, F, UopSplitType.SCA_SIM),   //f64 -> f32
+    FCVT_D_S    -> OPFFF(SrcType.fp, SrcType.X, FuType.vfcvt, VfcvtType.vfwcvt_ffv,    F, T, F, UopSplitType.SCA_SIM),   //f32 -> f64
+
     // donot wflags
     FCLASS_S -> OPFFF(SrcType.fp, SrcType.X, FuType.vfalu, VfaluType.vfclass, T, F, F, UopSplitType.SCA_SIM),
     FCLASS_D -> OPFFF(SrcType.fp, SrcType.X, FuType.vfalu, VfaluType.vfclass, T, F, F, UopSplitType.SCA_SIM),

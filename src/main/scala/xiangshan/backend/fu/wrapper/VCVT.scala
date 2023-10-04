@@ -19,16 +19,26 @@ class VCVT(cfg: FuConfig)(implicit p: Parameters) extends VecPipedFuncUnit(cfg) 
   private val dataWidthOfDataModule = 64
   private val numVecModule = dataWidth / dataWidthOfDataModule
 
+
+  //todo：1关于rm的问题 向量用的是frm； 标量是rm当111时用frm，再101-111时是非法指令
+  //fixed: 非cvt指令外的 fp 标量转向量的rm 需要随机rm参数来验证
+
+  //todo: 对于标量cvt指令来说 f2f没有问题也是读写vf，f2i来说 读f写i也没问题，两者都走是的vfschd
+  //而对于i2f来说，读的是int reg files，写入的是vf reg files
+  //所以 todo：如何让标量的cvt指令 int -> fp 走 vector float cvt fu
+
   // io alias
   private val opcode = fuOpType(7, 0)
   private val sew = vsew
 
+  private val hasSign = opcode(0)
+  private val isFpOut = opcode(6)
   private val isRtz = opcode(2) & opcode(1)
   private val isRod = opcode(2) & !opcode(1) & opcode(0)
-  private val isFrm = !isRtz && !isRod
+  private val isRm = !isRtz && !isRod
   private val rm = Mux1H(
-    Seq(isRtz, isRod, isFrm),
-    Seq(1.U, 6.U, frm)
+    Seq(isRtz, isRod, isRm),
+    Seq(1.U, 6.U, rmValue)
   )
 
   private val lmul = vlmul // -3->3 => 1/8 ->8
@@ -104,11 +114,13 @@ class VCVT(cfg: FuConfig)(implicit p: Parameters) extends VecPipedFuncUnit(cfg) 
   )
   val eNumMax1H = Mux(lmul.head(1).asBool, eNum1H >> ((~lmul.tail(1)).asUInt +1.U), eNum1H << lmul.tail(1)).asUInt(6, 0)
   val eNumMax = Mux1H(eNumMax1H, Seq(1,2,4,8,16,32,64).map(i => i.U)) //only for cvt intr, don't exist 128 in cvt
-  val eNumEffectIdx = Mux(vl > eNumMax, eNumMax, vl)
+  val vlForFflags = Mux(vecCtrl.fpu.isFpToVecInst, 1.U, vl) //todo: 不应该在这儿
+  val eNumEffectIdx = Mux(vlForFflags > eNumMax, eNumMax, vlForFflags)
 
   val eNum = Mux1H(eNum1H, Seq(1, 2, 4, 8).map(num =>num.U))
   val eStart = vuopIdx * eNum
-  val maskPart = srcMask >> eStart
+  val maskForFflags = Mux(vecCtrl.fpu.isFpToVecInst, allMaskTrue, srcMask)
+  val maskPart = maskForFflags >> eStart
   val mask =  Mux1H(eNum1H, Seq(1, 2, 4, 8).map(num => maskPart(num-1, 0)))
   val fflagsEn = Wire(Vec(4 * numVecModule, Bool()))
 
@@ -142,7 +154,12 @@ class VCVT(cfg: FuConfig)(implicit p: Parameters) extends VecPipedFuncUnit(cfg) 
   mgu.io.in.info.narrow := RegNext(RegNext(isNarrowCvt))
   mgu.io.in.info.dstMask := outVecCtrl.isDstMask
 
-  io.out.bits.res.data := mgu.io.out.vd
+  val hasSignCycles = RegNext(RegNext(hasSign))
+  val isFp2VecForInt = outVecCtrl.fpu.isFpToVecInst && RegNext(RegNext(outputWidth1H(2))) && RegNext(RegNext(!isFpOut))
+  io.out.bits.res.data := Mux(isFp2VecForInt,
+      Fill(32, mgu.io.out.vd(31)) ## mgu.io.out.vd(31, 0),
+      mgu.io.out.vd
+  )
 }
 
 class VectorCvtTopIO(vlen: Int, xlen: Int) extends Bundle{

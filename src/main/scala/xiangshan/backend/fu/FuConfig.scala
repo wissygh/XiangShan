@@ -169,7 +169,7 @@ case class FuConfig (
     * @return the index of special src data
     */
   protected def getSpecialSrcIdx(data: DataConfig, tips: String): Int = {
-    val srcIdxVec = srcData.map(x => x.indexOf(data))
+    val srcIdxVec = Seq(srcData(0)).map(x => x.indexOf(data))
     val idx0 = srcIdxVec.head
     for (idx <- srcIdxVec) {
       require(idx >= 0 && idx == idx0, tips + ", and at the same index.")
@@ -596,16 +596,19 @@ object FuConfig {
     fuGen = (p: Parameters, cfg: FuConfig) => Module(new VCVT(cfg)(p).suggestName("Vfcvt")),
     srcData = Seq(
       Seq(VecData(), VecData(), VecData(), MaskSrcData(), VConfigData()), // vs1, vs2, vd_old, v0, vtype&vl
+      Seq(IntData()),
     ),
     piped = true,
     writeVecRf = true,
-    writeFpRf = false,
+    writeFpRf = true,
+    writeIntRf = true,
     writeFflags = true,
     latency = CertainLatency(2),
     vconfigWakeUp = true,
     maskWakeUp = true,
     dataBits = 128,
     exceptionOut = Seq(illegalInstr),
+    needSrcFrm = true,//todo：标量是要被砍的，至少要有一个fucfg的这个参数是开的才可以
   )
 
 
