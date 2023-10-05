@@ -291,7 +291,7 @@ object Bundles {
     val vm        = Bool()    // 0: need v0.t
     val vstart    = Vl()
 
-    // float rounding mode
+    // float rounding mode from fcsr
     val frm       = Frm()
     // scalar float instr and vector float reduction
     val fpu       = Fpu()

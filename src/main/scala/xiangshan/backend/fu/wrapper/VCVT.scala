@@ -27,6 +27,8 @@ class VCVT(cfg: FuConfig)(implicit p: Parameters) extends VecPipedFuncUnit(cfg) 
   //而对于i2f来说，读的是int reg files，写入的是vf reg files
   //所以 todo：如何让标量的cvt指令 int -> fp 走 vector float cvt fu
 
+  //todo：看iq和datapath
+
   // io alias
   private val opcode = fuOpType(7, 0)
   private val sew = vsew
