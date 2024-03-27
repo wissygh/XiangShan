@@ -770,6 +770,7 @@ class IssueQueueIQWakeUpBundle(
     val vdIdx = if (isVector) Some(UInt(3.W)) else None // TODO: parameterize width
     val vdIdxInField = if (isVector) Some(UInt(3.W)) else None
     val debug = new DebugBundle
+    val backendTrigger = new BackendTriggerCf
 
     def isVls = FuType.isVls(uop.fuType)
   }

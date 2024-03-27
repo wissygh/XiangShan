@@ -516,6 +516,8 @@ class VsUopQueue(implicit p: Parameters) extends VLSUModule {
     x.vdIdx.foreach(_ := DontCare)
     x.vdIdxInField.foreach(_ := DontCare)
     x.debug := DontCare
+    x.uop.trigger.clear()
+    x.backendTrigger.clear()
   }
 
   for (i <- 1 until flowIssueWidth) {

@@ -574,6 +574,8 @@ class VsFlowQueue(implicit p: Parameters) extends VLSUModule with HasCircularQue
       x.packageNum        := packageNum
       x.originAlignedType := originAlignedType
       x.alignedType       := alignedType
+      x.uop.trigger.clear()
+      x.backendTrigger.clear()
     }
   }
 

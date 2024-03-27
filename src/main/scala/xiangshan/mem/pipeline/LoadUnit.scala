@@ -1214,6 +1214,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   s3_out.bits.debug.isPerfCnt := false.B
   s3_out.bits.debug.paddr     := s3_in.paddr
   s3_out.bits.debug.vaddr     := s3_in.vaddr
+  s3_out.bits.backendTrigger.clear()
   // Vector load
   s3_vecout.isvec             := s3_isvec
   s3_vecout.vecdata           := 0.U // Data will be assigned later
@@ -1354,6 +1355,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   io.vecldout.bits.uop := s3_out.bits.uop
   io.vecldout.valid := s3_out.valid && !s3_out.bits.uop.robIdx.needFlush(io.redirect) && s3_vecout.isvec ||
     io.lsq.uncache.valid && !io.lsq.uncache.bits.uop.robIdx.needFlush(io.redirect) && !s3_out.valid && !io.lsq.uncache.bits.isVls
+  io.vecldout.bits.backendTrigger.clear()
 
   io.vecReplay.valid := s3_vecout.isvec && s3_valid && !s3_out.bits.uop.robIdx.needFlush(io.redirect) &&
     io.lsq.ldin.bits.rep_info.need_rep

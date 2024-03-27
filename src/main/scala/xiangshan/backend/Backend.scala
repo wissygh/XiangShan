@@ -383,7 +383,11 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
       x.isIndexed := VlduType.isIndexed(source.bits.uop.fuOpType)
       x.isMasked := VlduType.isMasked(source.bits.uop.fuOpType)
     })
-    sink.bits.trigger.foreach(_ := source.bits.uop.trigger)
+    sink.bits.trigger.map(trigger =>{
+      trigger.clear()
+      trigger.backendHit := source.bits.backendTrigger.backendHit
+      trigger.backendCanFire := source.bits.backendTrigger.backendCanFire}
+    )
   }
 
   // to mem

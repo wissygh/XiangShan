@@ -421,7 +421,7 @@ class FrontendTrigger(implicit p: Parameters) extends XSModule with SdtrigExt {
 
   //val triggerHitVec = Wire(Vec(PredictWidth, Vec(TriggerNum, Bool())))
   val triggerHitVec = (0 until TriggerNum).map(j =>
-      TriggerCmpConsecutive(io.pc, tdata(j).tdata2, tdata(j).matchType, triggerEnableVec(j), VAddrBits).map(
+      TriggerCmpConsecutive(io.pc, tdata(j).tdata2, tdata(j).matchType, triggerEnableVec(j)).map(
         hit => hit && !tdata(j).select)
   ).transpose
 
@@ -432,8 +432,6 @@ class FrontendTrigger(implicit p: Parameters) extends XSModule with SdtrigExt {
     io.triggered(i).frontendHit := triggerHitVec(i)
     // can fire, exception will be handled at rob enq
     io.triggered(i).frontendCanFire := triggerCanFireVec
-    io.triggered(i).frontendTiming  := 0.U(TriggerNum.W).asBools
-    io.triggered(i).frontendChain  := 0.U(TriggerNum.W).asBools
     XSDebug(io.triggered(i).getFrontendCanFire, p"Debug Mode: Predecode Inst No. ${i} has trigger fire vec ${io.triggered(i).frontendCanFire}\n")
   }
   io.triggered.foreach(_.backendCanFire := VecInit(Seq.fill(TriggerNum)(false.B)))

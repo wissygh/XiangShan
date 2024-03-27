@@ -241,6 +241,8 @@ class VlFlowQueue(implicit p: Parameters) extends VLSUModule
       x.packageNum        := packageNum
       x.originAlignedType := originAlignedType
       x.alignedType       := alignedType
+      x.uop.trigger.clear()
+      x.backendTrigger.clear()
     }
   }
 

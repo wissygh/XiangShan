@@ -615,6 +615,8 @@ class VlUopQueue(implicit p: Parameters) extends VLSUModule
   io.uopWriteback.bits.vdIdx.foreach(_ := vdIdx)
   io.uopWriteback.bits.vdIdxInField.foreach(_ := vdIdxInField)
   io.uopWriteback.bits.debug := DontCare
+  io.uopWriteback.bits.uop.trigger.clear()
+  io.uopWriteback.bits.backendTrigger.clear()
 
   assert(!(issueValid && !io.flowIssue(0).valid && io.flowIssue(1).valid), "flow issue port 0 should have higher priority")
 

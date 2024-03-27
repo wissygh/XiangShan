@@ -2,11 +2,11 @@ package xiangshan.backend.fu.util
 
 import chisel3._
 import chisel3.util._
-import xiangshan.XSBundle
+import xiangshan.{XSBundle, HasXSParameter}
 import org.chipsalliance.cde.config.Parameters
 import utils.ConsecutiveOnes
 
-trait SdtrigExt {
+trait SdtrigExt extends HasXSParameter{
   implicit val p: Parameters
   class TDataRegs extends XSBundle {
     val tdata1 = UInt(XLEN.W)
@@ -237,9 +237,9 @@ trait SdtrigExt {
    * @return true.B if data meet the trigger match condition
    */
   def TriggerCmp(data: UInt, tdata: UInt, matchType: UInt, enable: Bool): Bool = {
-    val eq = data === tdata
-    val ge = data >= tdata
-    val lt = data < tdata
+    val eq = data(VAddrBits - 1, 0) === tdata(VAddrBits - 1, 0)
+    val ge = data(VAddrBits - 1, 0) >= tdata(VAddrBits - 1, 0)
+    val lt = data(VAddrBits - 1, 0) < tdata(VAddrBits - 1, 0)
     val res = MuxLookup(matchType, false.B, Seq(
       TrigMatchEnum.EQ -> eq,
       TrigMatchEnum.GE -> ge,
@@ -252,7 +252,7 @@ trait SdtrigExt {
    * author @Guokai Chen
    * compare between Consecutive pc and tdada2
    */
-  def TriggerCmpConsecutive(actual: Vec[UInt], tdata: UInt, matchType: UInt, enable: Bool, VAddrBits: Int) : Vec[Bool] = {
+  def TriggerCmpConsecutive(actual: Vec[UInt], tdata: UInt, matchType: UInt, enable: Bool) : Vec[Bool] = {
     // opt: only compare two possible high bits: orig and orig+1
     val len1 = actual.length
     val highPos = log2Up(len1)
