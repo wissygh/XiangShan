@@ -1,0 +1,29 @@
+diff --git a/src/test/csrc/common/remote_bitbang.cpp b/src/test/csrc/common/remote_bitbang.cpp
+index 83076d25..e758482a 100644
+--- a/src/test/csrc/common/remote_bitbang.cpp
++++ b/src/test/csrc/common/remote_bitbang.cpp
+@@ -61,14 +61,14 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port) : err(0), socket_fd(0), client
+ }
+ 
+ void remote_bitbang_t::accept() {
+-
+-  fprintf(stderr, "Attempting to accept client socket\n");
++  if (!quit) { fprintf(stderr, "Attempting to accept client socket\n"); }
+   int again = 1;
+   while (again != 0) {
+     client_fd = ::accept(socket_fd, NULL, NULL);
+     if (client_fd == -1) {
+       if (errno == EAGAIN) {
+         // No client waiting to connect right now.
++        if (quit) { again = 0; }
+       } else {
+         fprintf(stderr, "failed to accept on socket: %s (%d)\n", strerror(errno), errno);
+         again = 0;
+@@ -78,6 +78,7 @@ void remote_bitbang_t::accept() {
+       fcntl(client_fd, F_SETFL, O_NONBLOCK);
+       fprintf(stderr, "Accepted successfully.");
+       again = 0;
++      quit = 0;
+     }
+   }
+ }
