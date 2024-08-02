@@ -45,6 +45,7 @@ import xiangshan.frontend.AllFoldedHistories
 import xiangshan.frontend.AllAheadFoldedHistoryOldestBits
 import xiangshan.frontend.RASPtr
 import xiangshan.backend.rob.RobBundles.RobCommitEntryBundle
+import xiangshan.backend.trace._
 
 class ValidUndirectioned[T <: Data](gen: T) extends Bundle {
   val valid = Bool()
@@ -389,6 +390,9 @@ class RobCommitIO(implicit p: Parameters) extends XSBundle {
 
   val info = Vec(CommitWidth, new RobCommitInfo)
   val robIdx = Vec(CommitWidth, new RobPtr)
+
+  // trace instruction interface
+  val traceInterface = new Interface
 
   def hasWalkInstr: Bool = isWalk && walkValid.asUInt.orR
   def hasCommitInstr: Bool = isCommit && commitValid.asUInt.orR

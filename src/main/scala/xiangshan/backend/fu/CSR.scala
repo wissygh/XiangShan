@@ -31,6 +31,7 @@ import xiangshan.cache._
 import xiangshan.backend.Bundles.ExceptionInfo
 import xiangshan.backend.fu.NewCSR.CSRNamedConstant.ContextStatus
 import utils.MathUtils.{BigIntGenMask, BigIntNot}
+import xiangshan.backend.trace._
 
 class FpuCsrIO extends Bundle {
   val fflags = Output(Valid(UInt(5.W)))
@@ -95,6 +96,7 @@ class CSRFileIO(implicit p: Parameters) extends XSBundle {
   val trapTarget = Output(UInt(VAddrBits.W))
   val interrupt = Output(Bool())
   val wfi_event = Output(Bool())
+  val trapTraceInfo = ValidIO(new TraceTrap)
   // from LSQ
   val memExceptionVAddr = Input(UInt(VAddrBits.W))
   val memExceptionGPAddr = Input(UInt(GPAddrBits.W))
