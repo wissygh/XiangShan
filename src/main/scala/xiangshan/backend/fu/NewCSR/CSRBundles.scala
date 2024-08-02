@@ -57,8 +57,8 @@ object CSRBundles {
   }
 
   class PrivState extends Bundle { self =>
-    val PRVM = PrivMode(0)
     val V    = VirtMode(0)
+    val PRVM = PrivMode(0)
 
     def isModeM: Bool = isModeMImpl()
 

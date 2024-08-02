@@ -18,6 +18,7 @@ import xiangshan.backend.fu.vector.Bundles.{Vl, Vstart, Vxrm, Vxsat}
 import xiangshan.backend.fu.wrapper.CSRToDecode
 import xiangshan._
 import xiangshan.backend.fu.PerfCounterIO
+import xiangshan.backend.trace._
 
 import scala.collection.immutable.SeqMap
 
@@ -157,6 +158,8 @@ class NewCSR(implicit val p: Parameters) extends Module
       // trigger
       val frontendTrigger = new FrontendTdataDistributeIO()
       val memTrigger = new MemTdataDistributeIO()
+      // trace
+      val trapTraceInfo = ValidIO(new TraceTrap)
       // custom
       val custom = new CSRCustomState
     })
@@ -911,6 +914,13 @@ class NewCSR(implicit val p: Parameters) extends Module
   /**
    * debug_end
    */
+
+  // trace
+  val privState1HForTrace = Seq(privState.isModeM, privState.isModeHS, privState.isModeVS)
+  io.status.trapTraceInfo.valid := RegNext(io.fromRob.trap.valid)
+  io.status.trapTraceInfo.bits.priv  := Mux(debugMode, io.status.trapTraceInfo.bits.priv.D, privState.asUInt).asTypeOf(new PrivEnum)
+  io.status.trapTraceInfo.bits.cause := Mux1H(privState1HForTrace, Seq(mcause.rdata, scause.rdata, vscause.rdata))
+  io.status.trapTraceInfo.bits.tval  := Mux1H(privState1HForTrace, Seq(mtval.rdata, stval.rdata, vstval.rdata))
 
   /**
    * perf_begin
