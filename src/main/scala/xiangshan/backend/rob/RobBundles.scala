@@ -34,6 +34,7 @@ import xiangshan.backend.Bundles.{DynInst, ExceptionInfo, ExuOutput}
 import xiangshan.backend.ctrlblock.{DebugLSIO, DebugLsInfo, LsTopdownInfo}
 import xiangshan.backend.fu.vector.Bundles.VType
 import xiangshan.backend.rename.SnapshotGenerator
+import xiangshan.backend.trace._
 
 import scala.collection.immutable.Nil
 
@@ -63,6 +64,11 @@ object RobBundles extends HasCircularQueuePtrHelper {
     val loadWaitBit = Bool()    // for perfEvents
     val eliminatedMove = Bool() // for perfEvents
     // data end
+
+    // trace begin
+    val traceBlockInPipe = new TracePipe
+    val taken = Bool()
+    // trace end
 
     // status begin
     val valid = Bool()
@@ -112,6 +118,10 @@ object RobBundles extends HasCircularQueuePtrHelper {
     val loadWaitBit = Bool() // for perfEvents
     val isMove = Bool()      // for perfEvents
     val needFlush = Bool()
+    // trace begin
+    val traceBlockInPipe = new TracePipe
+    val taken = Bool()
+    // trace end
     // debug_begin
     val debug_pc = OptionWrapper(backendParams.debugEn, UInt(VAddrBits.W))
     val debug_instr = OptionWrapper(backendParams.debugEn, UInt(32.W))
@@ -140,6 +150,9 @@ object RobBundles extends HasCircularQueuePtrHelper {
     robEntry.eliminatedMove := robEnq.eliminatedMove
     // flushPipe needFlush but not exception
     robEntry.needFlush := robEnq.hasException || robEnq.flushPipe
+    // trace
+    robEntry.traceBlockInPipe := robEnq.traceBlockInPipe
+
     robEntry.debug_pc.foreach(_ := robEnq.pc)
     robEntry.debug_instr.foreach(_ := robEnq.instr)
     robEntry.debug_ldest.foreach(_ := robEnq.ldest)
@@ -170,6 +183,7 @@ object RobBundles extends HasCircularQueuePtrHelper {
     robCommitEntry.isMove := robEntry.eliminatedMove
     robCommitEntry.dirtyVs := robEntry.dirtyVs
     robCommitEntry.needFlush := robEntry.needFlush
+    robCommitEntry.traceBlockInPipe := robEntry.traceBlockInPipe
     robCommitEntry.debug_pc.foreach(_ := robEntry.debug_pc.get)
     robCommitEntry.debug_instr.foreach(_ := robEntry.debug_instr.get)
     robCommitEntry.debug_ldest.foreach(_ := robEntry.debug_ldest.get)
@@ -217,6 +231,7 @@ class RobCSRIO(implicit p: Parameters) extends XSBundle {
   val trapTarget = Input(UInt(VAddrBits.W))
   val isXRet     = Input(Bool())
   val wfiEvent   = Input(Bool())
+  val trapTraceInfo = Flipped(ValidIO(new TraceTrap))
 
   val fflags     = Output(Valid(UInt(5.W)))
   val vxsat      = Output(Valid(Bool()))

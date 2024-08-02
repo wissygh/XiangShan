@@ -35,6 +35,7 @@ import xiangshan.backend.fu.vector.Bundles.VType
 import xiangshan.backend.rename.SnapshotGenerator
 import yunsuan.VfaluType
 import xiangshan.backend.rob.RobBundles._
+import xiangshan.backend.trace.ItypeEnum
 
 class Rob(params: BackendParams)(implicit p: Parameters) extends LazyModule with HasXSParameter {
   override def shouldBeInlined: Boolean = false
@@ -106,6 +107,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   val exceptionWBs = io.writeback.filter(x => x.bits.exceptionVec.nonEmpty).toSeq
   val redirectWBs = io.writeback.filter(x => x.bits.redirect.nonEmpty).toSeq
   val vxsatWBs = io.exuWriteback.filter(x => x.bits.vxsat.nonEmpty).toSeq
+  val csrWBs = io.exuWriteback.filter(x => x.bits.params.hasCSR).toSeq
 
   val numExuWbPorts = exuWBs.length
   val numStdWbPorts = stdWBs.length
@@ -921,6 +923,18 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
     val vxsatCanWbSeq = vxsat_wb.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U)
     val vxsatRes = vxsatCanWbSeq.zip(vxsat_wb).map { case (canWb, wb) => Mux(canWb, wb.bits.vxsat.get, 0.U) }.fold(false.B)(_ | _)
     robEntries(i).vxsat := Mux(!robEntries(i).valid && instCanEnqFlag, 0.U, robEntries(i).vxsat | vxsatRes)
+
+    // trace
+    val taken = redirectWBs.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U &&
+      writeback.bits.redirect.get.valid && writeback.bits.redirect.get.bits.cfiUpdate.taken).reduce(_ || _)
+    robEntries(i).taken := Mux(!robEntries(i).valid && instCanEnqFlag, 0.U, taken(0))
+    val xret = csrWBs.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U && io.csr.isXRet).reduce(_ || _)
+
+    when(xret){
+      robEntries(i).traceBlockInPipe.itype := ItypeEnum.ExpIntReturn.asTypeOf(robEntries(i).traceBlockInPipe.itype)
+    }.elsewhen(CommitType.isBranch(robEntries(i).commitType)){
+      robEntries(i).traceBlockInPipe.itype := Mux(taken, ItypeEnum.Taken, ItypeEnum.NonTaken).asTypeOf(robEntries(i).traceBlockInPipe.itype)
+    }
   }
 
   // begin update robBanksRdata
@@ -1075,6 +1089,56 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   io.csr.perfinfo.retiredInstr := retireCounter
   io.robFull := !allowEnqueue
   io.headNotReady := commit_vDeqGroup.head && !commit_wDeqGroup.head
+
+  /**
+   * trace
+   * todo：iaddr should have read from pcmem
+   */
+  val trapTraceInfoFromCsr = io.csr.trapTraceInfo
+
+  // trace output
+  val traceTrap = io.commits.traceInterface.toEncoder.trap
+  val traceValids = io.commits.traceInterface.toEncoder.blocks.map(_.valid)
+  val traceBlocks = io.commits.traceInterface.toEncoder.blocks
+  val traceBlockInPipe = io.commits.traceInterface.toEncoder.blocks.map(_.bits.tracePipe)
+
+  traceTrap := trapTraceInfoFromCsr.bits
+
+  for (i <- 0 until CommitWidth) {
+    traceBlocks(i).bits.iaddr := 0.U//todo： should have read from pcmem
+//    traceBlockInPipe(i).itype := Mux(
+//      CommitType.isBranch(io.commits.info(i).commitType),
+//      Mux(io.commits.info(i).taken, ItypeEnum.Taken, ItypeEnum.NonTaken),
+//      Mux(io.csr.isXRet, ItypeEnum.ExpIntReturn, io.commits.info(i).traceBlockInPipe.itype.asUInt)
+//    ).asTypeOf( traceBlockInPipe(i).itype)
+    traceBlockInPipe(i).itype :=  io.commits.info(i).traceBlockInPipe.itype
+    traceBlockInPipe(i).iretire := Mux(io.commits.isCommit && io.commits.commitValid(i), io.commits.info(i).traceBlockInPipe.iretire, 0.U)
+    traceBlockInPipe(i).ilastsize := io.commits.info(i).traceBlockInPipe.ilastsize
+  }
+
+  for (i <- 0 until CommitWidth) {
+    val iretire = traceBlocks(i).bits.tracePipe.iretire
+    val itype   = traceBlocks(i).bits.tracePipe.itype
+    traceValids(i) := iretire =/= 0.U
+  }
+
+  val t_idle :: t_waiting :: Nil = Enum(2)
+  val traceState = RegInit(t_idle)
+  when(traceState === t_idle){
+    when(io.exception.valid){
+      traceState := t_waiting
+    }
+  }.elsewhen(traceState === t_waiting){
+    when(trapTraceInfoFromCsr.valid){
+      traceState := t_idle
+
+      traceBlocks(0).bits.tracePipe.itype := Mux(io.exception.bits.isInterrupt,
+        ItypeEnum.Interrupt,
+        ItypeEnum.Exception
+      ).asTypeOf(new ItypeEnum)
+      traceValids(0) := true.B
+    }
+  }
 
   /**
    * debug info
