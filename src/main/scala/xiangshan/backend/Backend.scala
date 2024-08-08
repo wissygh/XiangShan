@@ -41,7 +41,6 @@ import xiangshan.backend.issue.{CancelNetwork, Scheduler, SchedulerArithImp, Sch
 import xiangshan.backend.rob.{RobCoreTopDownIO, RobDebugRollingIO, RobLsqIO, RobPtr}
 import xiangshan.frontend.{FtqPtr, FtqRead, PreDecodeInfo}
 import xiangshan.mem.{LqPtr, LsqEnqIO, SqPtr}
-import xiangshan.backend.trace._
 
 import scala.collection.mutable
 
@@ -670,10 +669,6 @@ class BackendImp(override val wrapper: Backend)(implicit p: Parameters) extends 
 
   io.toTop.cpuHalted := false.B // TODO: implement cpu halt
 
-  // trace interface
-  io.traceInterface.toEncoder := ctrlBlock.io.traceInterface.toEncoder
-  dontTouch(io.traceInterface)
-
   io.debugTopDown.fromRob := ctrlBlock.io.debugTopDown.fromRob
   ctrlBlock.io.debugTopDown.fromCore := io.debugTopDown.fromCore
 
@@ -858,9 +853,6 @@ class BackendIO(implicit p: Parameters, params: BackendParams) extends XSBundle 
   val tlb = Output(new TlbCsrBundle)
 
   val csrCustomCtrl = Output(new CustomCSRCtrlIO)
-
-  // trace instruction interface
-  val traceInterface = new Interface
 
   val debugTopDown = new Bundle {
     val fromRob = new RobCoreTopDownIO

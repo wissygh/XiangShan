@@ -910,9 +910,13 @@ class NewCSR(implicit val p: Parameters) extends Module
    */
 
   // trace
-  val privState1HForTrace = Seq(privState.isModeM, privState.isModeHS, privState.isModeVS)
+  val privState1HForTrace = Seq(privState.isModeM, privState.isModeHS, privState.isModeHU, privState.isModeVS, privState.isModeVU)
+  val privStateForTrace   = Seq(3.U, 1.U, 0.U, 6.U, 5.U)
   io.status.trapTraceInfo.valid := RegNext(io.fromRob.trap.valid)
-  io.status.trapTraceInfo.bits.priv  := Mux(debugMode, io.status.trapTraceInfo.bits.priv.D, privState.asUInt).asTypeOf(new PrivEnum)
+  io.status.trapTraceInfo.bits.priv  := Mux(debugMode,
+    io.status.trapTraceInfo.bits.priv.D,
+    Mux1H(privState1HForTrace, privStateForTrace)
+  ).asTypeOf(new PrivEnum)
   io.status.trapTraceInfo.bits.cause := Mux1H(privState1HForTrace, Seq(mcause.rdata, scause.rdata, vscause.rdata))
   io.status.trapTraceInfo.bits.tval  := Mux1H(privState1HForTrace, Seq(mtval.rdata, stval.rdata, vstval.rdata))
 

@@ -387,9 +387,6 @@ class RobCommitIO(implicit p: Parameters) extends XSBundle {
   val info = Vec(CommitWidth, new RobCommitInfo)
   val robIdx = Vec(CommitWidth, new RobPtr)
 
-  // trace instruction interface
-  val traceInterface = new Interface
-
   def hasWalkInstr: Bool = isWalk && walkValid.asUInt.orR
   def hasCommitInstr: Bool = isCommit && commitValid.asUInt.orR
 }

@@ -4,45 +4,55 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xiangshan.HasXSParameter
-import xiangshan.frontend.{BrType, PreDecodeInfo}
+import xiangshan.frontend.{BrType, FtqPtr, PreDecodeInfo}
 
 trait TraceConfig extends HasXSParameter {
   implicit val p: Parameters
-  def causeWidth = XLEN //64
-  def tvalWidth = XLEN
-  def privWidth = 3
+  def CauseWidth         = XLEN //64
+  def TvalWidth          = XLEN
+  def PrivWidth          = 3
 
-  def blockNum = CommitWidth
-  def itypeWidth = 4
-  def iaddrWidth = VAddrBits
-  def iretireWidth = log2Up(RenameWidth * 2)
+  def IaddrWidth         = XLEN
+
+  def ItypeWidth             = 4
+  def IretireWidthInPipe     = log2Up(RenameWidth * 2)
+  def IretireWidthCompressed = log2Up(RenameWidth * CommitWidth * 2)
+  def IlastsizeWidth         = 1
+  def GroupNum               = 3 // Width to Encoder
 }
 
 class TraceTrap(implicit val p: Parameters) extends Bundle with TraceConfig {
-  val cause = UInt(causeWidth.W)
-  val tval  = UInt(tvalWidth.W)
+  val cause = UInt(CauseWidth.W)
+  val tval  = UInt(TvalWidth.W)
   val priv  = new PrivEnum
 }
 
-class TracePipe(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TracePipe(iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
   val itype     = new ItypeEnum
   val iretire   = UInt(iretireWidth.W)
   val ilastsize = new IlastsizeEnum
 }
 
-class TraceBlock(implicit val p: Parameters) extends Bundle with TraceConfig {
-  val iaddr     = UInt(iaddrWidth.W)
-  val tracePipe = new TracePipe
+class TraceBlock(hasIaddr: Boolean, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
+  val iaddr     = if (hasIaddr)   Some(UInt(IaddrWidth.W))                else None
+  val ftqIdx    = if (!hasIaddr)  Some(new FtqPtr)                        else None
+  val ftqOffset = if (!hasIaddr)  Some( UInt(log2Up(PredictWidth).W))     else None
+  val tracePipe = new TracePipe(iretireWidth)
 }
 
-class Interface(implicit val p: Parameters) extends Bundle with TraceConfig {
-  val fromEncoder = Input(new Bundle {
-  })
+class TraceBundle(hasIaddr: Boolean, blockSize: Int, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
+  val trap = Output(new TraceTrap)
+  val blocks = Vec(blockSize, ValidIO(new TraceBlock(hasIaddr, iretireWidth)))
+}
 
-  val toEncoder = Output(new Bundle {
-    val trap = new TraceTrap
-    val blocks = Vec(blockNum, ValidIO(new TraceBlock))
-  })
+class FromEncoder extends Bundle {
+  val enable = Bool()
+  val stall  = Bool()
+}
+
+class TraceCoreInterface(implicit val p: Parameters) extends Bundle with TraceConfig {
+  val fromEncoder = Input(new FromEncoder)
+  val toEncoder = new TraceBundle(true, GroupNum, IretireWidthCompressed)
 }
 
 class ItypeEnum extends Bundle {
@@ -53,7 +63,8 @@ class ItypeEnum extends Bundle {
   def ExpIntReturn         = 3.U    //rename
   def NonTaken             = 4.U    //commit
   def Taken                = 5.U    //commit
-  def UninferableJump      = 6.U    //reserved
+  def UninferableJump      = 6.U    //It's reserved(I think the code must not be adopted) when width of itype is 4.
+  def reserved             = 7.U    //reserved
   def UninferableCall      = 8.U    //rename
   def InferableCall        = 9.U    //rename
   def UninferableTailCall  = 10.U   //rename
@@ -67,11 +78,12 @@ class ItypeEnum extends Bundle {
     this.value := None
   }
 
-  def jumpTypeGen(brType: UInt, rd: OpRegType, rs: OpRegType): ItypeEnum = {
+  def jumpTypeGen(brType: UInt, rd: OpRegType, rs: OpRegType): Unit = {
 
     val isEqualRdRs = rd === rs
     val isJal       = brType === BrType.jal
     val isJalr      = brType === BrType.jalr
+    val isBranch    = brType === BrType.branch
 
     // push to RAS when rd is link, pop from RAS when rs is link
     def isUninferableCall      = isJalr && rd.isLink && (!rs.isLink || rs.isLink && isEqualRdRs)  //8   push
@@ -85,6 +97,7 @@ class ItypeEnum extends Bundle {
 
     val jumpType = Mux1H(
       Seq(
+        isBranch,
         isUninferableCall,
         isInferableCall,
         isUninferableTailCall,
@@ -94,13 +107,18 @@ class ItypeEnum extends Bundle {
         isOtherUninferableJump,
         isOtherInferableJump,
       ),
-      (8 to 15).map(i => i.U)
+      Seq(6.U) ++ (8 to 15).map(i => i.U)
     )
-    Mux(isJal || isJalr, jumpType, 0.U).asTypeOf(new ItypeEnum)
+    this.value := Mux(isBranch || isJal || isJalr, jumpType, 0.U)
   }
 
   // supportSijump
   def isTrap = Seq(Exception, Interrupt).map(_ === this.value).reduce(_ || _)
+
+  def isNotNone = this.value =/= None
+
+  // Adopt reserved code to represent branchType, It is f**king tricky!
+  def isBranchType  = this.value === UninferableJump  //
 
   // supportSijump
   def isUninferable = Seq(UninferableCall, UninferableTailCall, CoRoutineSwap,
