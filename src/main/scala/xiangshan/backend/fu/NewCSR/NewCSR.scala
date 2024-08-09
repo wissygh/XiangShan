@@ -916,11 +916,15 @@ class NewCSR(implicit val p: Parameters) extends Module
    */
 
   // trace
-  val privState1HForTrace = Seq(privState.isModeM, privState.isModeHS, privState.isModeVS)
+  val privState1HForTrace = Seq(privState.isModeM, privState.isModeHS, privState.isModeVS, privState.isModeHU, privState.isModeVU)
+  val privStateForTrace   = Seq(PrivEnum.M,        PrivEnum.HS,        PrivEnum.VS,        PrivEnum.HU,        PrivEnum.VU)
   io.status.trapTraceInfo.valid := RegNext(io.fromRob.trap.valid)
-  io.status.trapTraceInfo.bits.priv  := Mux(debugMode, io.status.trapTraceInfo.bits.priv.D, privState.asUInt).asTypeOf(new PrivEnum)
-  io.status.trapTraceInfo.bits.cause := Mux1H(privState1HForTrace, Seq(mcause.rdata, scause.rdata, vscause.rdata))
-  io.status.trapTraceInfo.bits.tval  := Mux1H(privState1HForTrace, Seq(mtval.rdata, stval.rdata, vstval.rdata))
+  io.status.trapTraceInfo.bits.priv  := Mux(debugMode,
+    PrivEnum.D,
+    Mux1H(privState1HForTrace, privStateForTrace)
+  ).asTypeOf(new PrivEnum)
+  io.status.trapTraceInfo.bits.cause := Mux1H(VecInit(privState1HForTrace).asUInt.head(3), Seq(mcause.rdata, scause.rdata, vscause.rdata))
+  io.status.trapTraceInfo.bits.tval  := Mux1H(VecInit(privState1HForTrace).asUInt.head(3), Seq(mtval.rdata,  stval.rdata,  vstval.rdata))
 
   /**
    * perf_begin
