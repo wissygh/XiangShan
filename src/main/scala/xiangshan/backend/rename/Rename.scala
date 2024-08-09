@@ -417,7 +417,7 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   for (i <- 0 until RenameWidth) {
     // iretire
     uops(i).traceBlockInPipe.iretire := Mux(canRobCompressVec(i),
-      halfWordNumVec(i).reduce(_ + _),
+      halfWordNumVec(i).reduce(_ +& _),
       Mux(isRVCVec(i), 1.U, 2.U)
     )
 

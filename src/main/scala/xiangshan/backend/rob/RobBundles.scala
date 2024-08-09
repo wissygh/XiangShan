@@ -65,8 +65,7 @@ object RobBundles extends HasCircularQueuePtrHelper {
     // data end
 
     // trace begin
-    val traceBlockInPipe = new TracePipe
-    val taken = Bool()
+    val traceBlockInPipe = new TracePipe(log2Up(RenameWidth * 2))
     // trace end
 
     // status begin
@@ -117,8 +116,7 @@ object RobBundles extends HasCircularQueuePtrHelper {
     val isMove = Bool()      // for perfEvents
     val needFlush = Bool()
     // trace begin
-    val traceBlockInPipe = new TracePipe
-    val taken = Bool()
+    val traceBlockInPipe = new TracePipe(log2Up(RenameWidth * 2))
     // trace end
     // debug_begin
     val debug_pc = OptionWrapper(backendParams.debugEn, UInt(VAddrBits.W))
@@ -228,7 +226,7 @@ class RobCSRIO(implicit p: Parameters) extends XSBundle {
   val trapTarget = Input(UInt(VAddrBits.W))
   val isXRet     = Input(Bool())
   val wfiEvent   = Input(Bool())
-  val trapTraceInfo = Flipped(ValidIO(new TraceTrap))
+  val traceTrapInfo = Flipped(ValidIO(new TraceTrap))
 
   val fflags     = Output(Valid(UInt(5.W)))
   val vxsat      = Output(Valid(Bool()))
