@@ -81,6 +81,20 @@ trait HasSoCParameter {
   val issue = p(CHIIssue)
 
   val NumCores = tiles.size
+
+  // Parameters for trace extension
+  val TraceCauseWidth             = tiles.head.CauseWidth
+  val TraceTvalWidth              = tiles.head.TvalWidth
+  val TracePrivWidth              = tiles.head.PrivWidth
+  val TraceIaddrWidth             = tiles.head.IaddrWidth
+  val TraceItypeWidth             = tiles.head.ItypeWidth
+  val TraceIretireWidthInPipe     = tiles.head.IretireWidthInPipe
+  val TraceIretireWidthCompressed = tiles.head.IretireWidthCompressed
+  val TraceIlastsizeWidth         = tiles.head.IlastsizeWidth
+  val TraceTraceGroupNum          = tiles.head.TraceGroupNum
+  val TraceHasEncoder             = tiles.head.HasEncoder
+  val TraceTraceEnable            = tiles.head.TraceEnable
+
   val EnableILA = soc.EnableILA
 
   // L3 configurations

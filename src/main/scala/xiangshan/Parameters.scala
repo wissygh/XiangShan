@@ -531,6 +531,19 @@ case class XSCoreParameters
     ),
     iqWakeUpParams,
   )
+
+  // Parameters for trace extension
+  val CauseWidth             = XLEN //64
+  val TvalWidth              = XLEN
+  val PrivWidth              = 3
+  val IaddrWidth             = XLEN
+  val ItypeWidth             = 4
+  val IretireWidthInPipe     = log2Up(RenameWidth * 2)
+  val IretireWidthCompressed = log2Up(RenameWidth * CommitWidth * 2)
+  val IlastsizeWidth         = 1
+  val TraceGroupNum          = 3 // Width to Encoder
+  val HasEncoder             = true
+  val TraceEnable            = true
 }
 
 case object DebugOptionsKey extends Field[DebugOptions]
@@ -835,4 +848,17 @@ trait HasXSParameter {
   // Parameters for Sdtrig extension
   protected def TriggerNum = 4
   protected def TriggerChainMaxLength = 2
+
+  // Parameters for trace extension
+  def CauseWidth             = coreParams.CauseWidth
+  def TvalWidth              = coreParams.TvalWidth
+  def PrivWidth              = coreParams.PrivWidth
+  def IaddrWidth             = coreParams.IaddrWidth
+  def ItypeWidth             = coreParams.ItypeWidth
+  def IretireWidthInPipe     = coreParams.IretireWidthInPipe
+  def IretireWidthCompressed = coreParams.IretireWidthCompressed
+  def IlastsizeWidth         = coreParams.IlastsizeWidth
+  def TraceGroupNum          = coreParams.TraceGroupNum
+  def HasEncoder             = coreParams.HasEncoder
+  def TraceEnable            = coreParams.TraceEnable
 }

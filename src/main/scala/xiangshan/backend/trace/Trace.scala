@@ -5,7 +5,7 @@ import chisel3.util.{RegEnable, ValidIO, log2Up}
 import org.chipsalliance.cde.config.Parameters
 import xiangshan.HasXSParameter
 
-class TraceIO(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TraceIO(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val fromEncoder    = Input(new FromEncoder)
   val fromRob        = Flipped(new TraceBundle(false, CommitWidth, IretireWidthInPipe))
   val blockRobCommit = Output(Bool())
@@ -14,7 +14,7 @@ class TraceIO(implicit val p: Parameters) extends Bundle with TraceConfig {
   val toEncoder      = new TraceBundle(true, TraceGroupNum, IretireWidthCompressed)
 }
 
-class Trace(implicit val p: Parameters) extends Module with TraceConfig {
+class Trace(implicit val p: Parameters) extends Module with HasXSParameter {
   val io = IO(new TraceIO)
   val (fromEncoder, fromRob, toPcMem, fromPcMem, toEncoder) = (io.fromEncoder, io.fromRob, io.toPcMem, io.fromPcMem, io.toEncoder)
 
