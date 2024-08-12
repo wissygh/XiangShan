@@ -30,6 +30,7 @@ import top.{BusPerfMonitor, ArgParser, Generator}
 import utility.{DelayN, ResetGen, TLClientsMerger, TLEdgeBuffer, TLLogger, Constantin, ChiselDB, FileRegisters}
 import coupledL2.EnableCHI
 import coupledL2.tl2chi.PortIO
+import xiangshan.backend.trace.TraceCoreInterface
 
 class XSTile()(implicit p: Parameters) extends LazyModule
   with HasXSParameter
@@ -96,6 +97,7 @@ class XSTile()(implicit p: Parameters) extends LazyModule
       val msiInfo = Input(ValidIO(new MsiInfoBundle))
       val reset_vector = Input(UInt(PAddrBits.W))
       val cpu_halt = Output(Bool())
+      val traceCoreInterface = new TraceCoreInterface
       val debugTopDown = new Bundle {
         val robHeadPaddr = Valid(UInt(PAddrBits.W))
         val l3MissMatch = Input(Bool())
@@ -119,6 +121,7 @@ class XSTile()(implicit p: Parameters) extends LazyModule
     l2top.module.reset_vector.fromTile := io.reset_vector
     l2top.module.cpu_halt.fromCore := core.module.io.cpu_halt
     io.cpu_halt := l2top.module.cpu_halt.toTile
+    io.traceCoreInterface <> core.module.io.traceCoreInterface
 
     core.module.io.perfEvents <> DontCare
 

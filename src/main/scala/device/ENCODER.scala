@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.experimental._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
+import xiangshan.HasXSParameter
 import xiangshan.backend.trace._
 
 class ENCODER (
@@ -19,7 +20,7 @@ class ENCODER (
    CtypeWidth:     Int = 32,
    ImpdefWidth:    Int = 32,
    StatusWidth:    Int = 32,
-)(implicit val p: Parameters) extends Module with TraceConfig {
+)(implicit val p: Parameters) extends Module with HasXSParameter {
 
   val encoderWapper = Module(new ust_ss_bosc_eval_m (
     GroupNum       = this.GroupNum,
@@ -45,15 +46,15 @@ class ENCODER (
   io.fromEncoder.enable := encoderWapper.ust.ete_mult_retire_rv.i_enable_op
 
   // trap
-  encoderWapper.ust.ete_mult_retire_rv_i.ecause_ip    := io.toEncoder.trap.cause
-  encoderWapper.ust.ete_mult_retire_rv_i.tval_ip      := io.toEncoder.trap.tval
-  encoderWapper.ust.ete_mult_retire_rv_i.privilege_ip := io.toEncoder.trap.priv
+  encoderWapper.ust.ete_mult_retire_rv_i.ecause_ip    := io.toEncoder.cause
+  encoderWapper.ust.ete_mult_retire_rv_i.tval_ip      := io.toEncoder.tval
+  encoderWapper.ust.ete_mult_retire_rv_i.privilege_ip := io.toEncoder.priv
 
   // block
-  encoderWapper.ust.ete_mult_retire_rv_i.address_ip  := VecInit(io.toEncoder.blocks.map(_.bits.iaddr.get)).asUInt
-  encoderWapper.ust.ete_mult_retire_rv_i.retire_ip   := VecInit(io.toEncoder.blocks.map(_.bits.tracePipe.iretire)).asUInt
-  encoderWapper.ust.ete_mult_retire_rv_i.lastsize_ip := VecInit(io.toEncoder.blocks.map(_.bits.tracePipe.ilastsize)).asUInt
-  encoderWapper.ust.ete_mult_retire_rv_i.type_ip     := VecInit(io.toEncoder.blocks.map(_.bits.tracePipe.itype)).asUInt
+  encoderWapper.ust.ete_mult_retire_rv_i.address_ip  := io.toEncoder.iaddr
+  encoderWapper.ust.ete_mult_retire_rv_i.retire_ip   := io.toEncoder.iretire
+  encoderWapper.ust.ete_mult_retire_rv_i.lastsize_ip := io.toEncoder.ilastsize
+  encoderWapper.ust.ete_mult_retire_rv_i.type_ip     := io.toEncoder.itype
 
   // optional
   encoderWapper.ust.ete_mult_retire_rv_i.sijump_ip  := 0.U

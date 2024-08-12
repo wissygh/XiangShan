@@ -7,7 +7,7 @@ import utility.{CircularQueuePtr, HasCircularQueuePtrHelper}
 import xiangshan.{HasXSParameter, XSCoreParamsKey}
 
 class TraceBuffer(implicit val p: Parameters) extends Module
-  with TraceConfig
+  with HasXSParameter
   with HasCircularQueuePtrHelper {
 
   val io = IO(new Bundle {

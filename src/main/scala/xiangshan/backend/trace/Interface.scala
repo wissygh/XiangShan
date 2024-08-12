@@ -6,42 +6,42 @@ import org.chipsalliance.cde.config.Parameters
 import xiangshan.HasXSParameter
 import xiangshan.frontend.{BrType, FtqPtr, PreDecodeInfo}
 
-trait TraceConfig extends HasXSParameter {
-  implicit val p: Parameters
-  def CauseWidth         = XLEN //64
-  def TvalWidth          = XLEN
-  def PrivWidth          = 3
-  def IaddrWidth         = XLEN
+//trait TraceConfig extends HasXSParameter {
+//  implicit val p: Parameters
+//  def CauseWidth         = XLEN //64
+//  def TvalWidth          = XLEN
+//  def PrivWidth          = 3
+//  def IaddrWidth         = XLEN
+//
+//  def ItypeWidth             = 4
+//  def IretireWidthInPipe     = log2Up(RenameWidth * 2)
+//  def IretireWidthCompressed = log2Up(RenameWidth * CommitWidth * 2)
+//  def IlastsizeWidth         = 1
+//  def TraceGroupNum          = 3 // Width to Encoder
+//  def HasEncoder             = true
+//  def TraceEnable            = true
+//}
 
-  def ItypeWidth             = 4
-  def IretireWidthInPipe     = log2Up(RenameWidth * 2)
-  def IretireWidthCompressed = log2Up(RenameWidth * CommitWidth * 2)
-  def IlastsizeWidth         = 1
-  def TraceGroupNum          = 3 // Width to Encoder
-  def HasEncoder             = false
-  def TraceEnable            = true
-}
-
-class TraceTrap(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TraceTrap(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val cause = UInt(CauseWidth.W)
   val tval  = UInt(TvalWidth.W)
   val priv  = new PrivEnum
 }
 
-class TracePipe(iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TracePipe(iretireWidth: Int)(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val itype     = new ItypeEnum
   val iretire   = UInt(iretireWidth.W)
   val ilastsize = new IlastsizeEnum
 }
 
-class TraceBlock(hasIaddr: Boolean, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TraceBlock(hasIaddr: Boolean, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val iaddr     = if (hasIaddr)   Some(UInt(IaddrWidth.W))                else None
   val ftqIdx    = if (!hasIaddr)  Some(new FtqPtr)                        else None
   val ftqOffset = if (!hasIaddr)  Some( UInt(log2Up(PredictWidth).W))     else None
   val tracePipe = new TracePipe(iretireWidth)
 }
 
-class TraceBundle(hasIaddr: Boolean, blockSize: Int, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with TraceConfig {
+class TraceBundle(hasIaddr: Boolean, blockSize: Int, iretireWidth: Int)(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val trap = Output(new TraceTrap)
   val blocks = Vec(blockSize, ValidIO(new TraceBlock(hasIaddr, iretireWidth)))
 }
@@ -51,9 +51,20 @@ class FromEncoder extends Bundle {
   val stall  = Bool()
 }
 
-class TraceCoreInterface(implicit val p: Parameters) extends Bundle with TraceConfig {
-  val fromEncoder = Input(new FromEncoder)
-  val toEncoder = new TraceBundle(true, TraceGroupNum, IretireWidthCompressed)
+class TraceCoreInterface(implicit val p: Parameters) extends Bundle with HasXSParameter {
+  val fromEncoder = Input(new Bundle {
+    val enable = Bool()
+    val stall  = Bool()
+  })
+  val toEncoder   = Output(new Bundle {
+    val cause     = UInt(CauseWidth.W)
+    val tval      = UInt(TvalWidth.W)
+    val priv      = UInt(PrivWidth.W)
+    val iaddr     = UInt((TraceGroupNum * IaddrWidth).W)
+    val itype     = UInt((TraceGroupNum * ItypeWidth).W)
+    val iretire   = UInt((TraceGroupNum * IretireWidthCompressed).W)
+    val ilastsize = UInt(TraceGroupNum.W)
+  })
 }
 
 class ItypeEnum extends Bundle {
