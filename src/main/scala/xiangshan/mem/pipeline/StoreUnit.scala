@@ -276,11 +276,11 @@ class StoreUnit(implicit p: Parameters) extends XSModule
   storeTrigger.io.fromCsrTrigger.tdataVec             := io.fromCsrTrigger.tdataVec
   storeTrigger.io.fromCsrTrigger.tEnableVec           := io.fromCsrTrigger.tEnableVec
   storeTrigger.io.fromCsrTrigger.triggerCanRaiseBpExp := io.fromCsrTrigger.triggerCanRaiseBpExp
+  storeTrigger.io.fromCsrTrigger.debugMode            := io.fromCsrTrigger.debugMode
   storeTrigger.io.fromStore.vaddr                     := s1_in.vaddr
 
-  s1_out.uop.trigger.backendHit       := storeTrigger.io.toStore.triggerHitVec
-  s1_out.uop.trigger.backendCanFire   := storeTrigger.io.toStore.triggerCanFireVec
-  s1_out.uop.exceptionVec(breakPoint) := storeTrigger.io.toStore.breakPointExp
+  s1_out.uop.trigger                  := storeTrigger.io.toStore.triggerAction
+  s1_out.uop.exceptionVec(breakPoint) := TriggerAction.isExp(storeTrigger.io.toStore.triggerAction)
 
   // scalar store and scalar load nuke check, and also other purposes
   io.lsq.valid     := s1_valid && !s1_in.isHWPrefetch
