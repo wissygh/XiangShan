@@ -111,6 +111,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   val exceptionWBs = io.writeback.filter(x => x.bits.exceptionVec.nonEmpty).toSeq
   val redirectWBs = io.writeback.filter(x => x.bits.redirect.nonEmpty).toSeq
   val vxsatWBs = io.exuWriteback.filter(x => x.bits.vxsat.nonEmpty).toSeq
+  val branchWBs = io.exuWriteback.filter(_.bits.params.hasBrhFu).toSeq
   val csrWBs = io.exuWriteback.filter(x => x.bits.params.hasCSR).toSeq
 
   val numExuWbPorts = exuWBs.length
@@ -960,7 +961,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
     robEntries(i).vxsat := Mux(!robEntries(i).valid && instCanEnqFlag, 0.U, robEntries(i).vxsat | vxsatRes)
 
     // trace
-    val taken = redirectWBs.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U &&
+    val taken = branchWBs.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U &&
       writeback.bits.redirect.get.valid && writeback.bits.redirect.get.bits.cfiUpdate.taken).reduce(_ || _)
     val xret = csrWBs.map(writeback => writeback.valid && writeback.bits.robIdx.value === i.U && io.csr.isXRet).reduce(_ || _)
 
