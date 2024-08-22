@@ -98,6 +98,21 @@ class XSNoCTop()(implicit p: Parameters) extends BaseXSSoc with HasSoCParameter
       val chi = new PortIO
       val nodeID = Input(UInt(soc.NodeIDWidthList(issue).W))
       val clintTime = Input(ValidIO(UInt(64.W)))
+      val traceCoreInterface = new Bundle {
+        val fromEncoder = Input(new Bundle {
+          val enable = Bool()
+          val stall  = Bool()
+        })
+        val toEncoder   = Output(new Bundle {
+          val cause     = UInt(TraceCauseWidth.W)
+          val tval      = UInt(TraceTvalWidth.W)
+          val priv      = UInt(TracePrivWidth.W)
+          val iaddr     = UInt((TraceTraceGroupNum * TraceIaddrWidth).W)
+          val itype     = UInt((TraceTraceGroupNum * TraceItypeWidth).W)
+          val iretire   = UInt((TraceTraceGroupNum * TraceIretireWidthCompressed).W)
+          val ilastsize = UInt(TraceTraceGroupNum.W)
+        })
+      }
     })
     // imsic axi4lite io
     val imsic_m_s = wrapper.u_imsic_bus_top.module.m_s.map(x => IO(chiselTypeOf(x)))
@@ -133,6 +148,8 @@ class XSNoCTop()(implicit p: Parameters) extends BaseXSSoc with HasSoCParameter
     core_with_l2.module.io.nodeID.get := io.nodeID
     io.riscv_halt := core_with_l2.module.io.cpu_halt
     core_with_l2.module.io.reset_vector := io.riscv_rst_vec
+    io.traceCoreInterface.toEncoder := core_with_l2.module.io.traceCoreInterface.toEncoder
+    core_with_l2.module.io.traceCoreInterface.fromEncoder := io.traceCoreInterface.fromEncoder
 
     val clintTimeAsyncQueueSource = withClockAndReset(soc_clock, soc_reset_sync) { Module(new AsyncQueueSource(UInt(64.W), AsyncQueueParams(1))) }
     clintTimeAsyncQueueSource.io.enq.valid := io.clintTime.valid
