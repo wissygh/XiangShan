@@ -215,7 +215,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   // that is Necessary when exceptions happen.
   // Update the ftqIdx and ftqOffset to correctly notify the frontend which instructions have been committed.
   for (i <- 0 until CommitWidth) {
-    val lastOffset = (rawInfo(i).traceBlockInPipe.iretire - (1.U << rawInfo(i).traceBlockInPipe.ilastsize.asUInt)) +& rawInfo(i).ftqOffset
+    val lastOffset = (rawInfo(i).traceBlockInPipe.iretire - (1.U << rawInfo(i).traceBlockInPipe.ilastsize.asUInt).asUInt) +& rawInfo(i).ftqOffset
     commitInfo(i).ftqIdx := rawInfo(i).ftqIdx + lastOffset.head(1)
     commitInfo(i).ftqOffset := lastOffset.tail(1)
   }
@@ -1141,6 +1141,51 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   io.csr.perfinfo.retiredInstr := retireCounter
   io.robFull := !allowEnqueue
   io.headNotReady := commit_vDeqGroup.head && !commit_wDeqGroup.head
+
+  /**
+   * trace
+   * todo：iaddr should have read from pcmem
+   */
+  val trapTraceInfoFromCsr = io.csr.trapTraceInfo
+
+  // trace output
+  val traceTrap = io.trace.traceCommitInfo.trap
+  val traceValids = io.trace.traceCommitInfo.blocks.map(_.valid)
+  val traceBlocks = io.trace.traceCommitInfo.blocks
+  val traceBlockInPipe = io.trace.traceCommitInfo.blocks.map(_.bits.tracePipe)
+
+  traceTrap := trapTraceInfoFromCsr.bits
+
+  for (i <- 0 until CommitWidth) {
+    traceBlocks(i).bits.ftqIdx.foreach(_ := io.commits.info(i).ftqIdx)
+    traceBlocks(i).bits.ftqOffset.foreach(_ := io.commits.info(i).ftqOffset)
+    traceBlockInPipe(i).itype :=  io.commits.info(i).traceBlockInPipe.itype
+    traceBlockInPipe(i).iretire := Mux(io.commits.isCommit && io.commits.commitValid(i), io.commits.info(i).traceBlockInPipe.iretire, 0.U)
+    traceBlockInPipe(i).ilastsize := io.commits.info(i).traceBlockInPipe.ilastsize
+  }
+
+  for (i <- 0 until CommitWidth) {
+    val iretire = traceBlocks(i).bits.tracePipe.iretire
+    val itype   = traceBlocks(i).bits.tracePipe.itype
+    traceValids(i) := iretire =/= 0.U
+  }
+
+  val t_idle :: t_waiting :: Nil = Enum(2)
+  val traceState = RegInit(t_idle)
+  when(traceState === t_idle){
+    when(io.exception.valid){
+      traceState := t_waiting
+    }
+  }.elsewhen(traceState === t_waiting){
+    when(trapTraceInfoFromCsr.valid){
+      traceState := t_idle
+      traceBlocks(0).bits.tracePipe.itype := Mux(io.exception.bits.isInterrupt,
+        Itype.Interrupt,
+        Itype.Exception
+      )
+      traceValids(0) := true.B
+    }
+  }
 
   /**
    * debug info
