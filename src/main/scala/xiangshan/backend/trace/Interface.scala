@@ -4,8 +4,15 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import utils.NamedUInt
-import xiangshan.HasXSParameter
+import xiangshan._
 import xiangshan.frontend.{BrType, FtqPtr, PreDecodeInfo}
+import chiseltest._
+import chiseltest.ChiselScalatestTester
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.must.Matchers
+import top.{ArgParser, BaseConfig, DefaultConfig, Generator, MinimalConfig}
+import xiangshan.backend.fu.NewCSR.NewCSR
+import xiangshan.backend.fu.NewCSR.NewCSRMain.args
 
 class TraceTrap(implicit val p: Parameters) extends Bundle with HasXSParameter {
   val cause = UInt(CauseWidth.W)
@@ -144,9 +151,107 @@ object Priv extends NamedUInt(3) {
 }
 
 class OpRegType extends Bundle {
-  val value = UInt(3.W)
+  val value = UInt(6.W)
   def isX0   = this.value === 0.U
   def isX1   = this.value === 1.U
   def isX5   = this.value === 5.U
-  def isLink = Seq(isX1, isX5).map(_ === this.value).reduce(_ || _)
+  def isLink = Seq(isX1, isX5).reduce(_ || _)
 }
+
+/*
+class ItypeGen extends Module {
+  val io = IO(new Bundle {
+    val brType = Input(UInt(2.W))
+    val rd     = Input(UInt(6.W))
+    val rs     = Input(UInt(6.W))
+    val itype  = Output(UInt(4.W))
+    val rsIslink = Output(Bool())
+    val rsIs0 = Output(Bool())
+    val rdIslink = Output(Bool())
+    val rdIs0 = Output(Bool())
+    val sel = Output(UInt(9.W))
+  })
+
+  val rd = io.rd.asTypeOf(new OpRegType)
+  val rs = io.rs.asTypeOf(new OpRegType)
+  val brType = io.brType
+
+  val isEqualRdRs = rd === rs
+  val isJal       = brType === BrType.jal
+  val isJalr      = brType === BrType.jalr
+  val isBranch    = brType === BrType.branch
+
+  // push to RAS when rd is link, pop from RAS when rs is link
+  def isUninferableCall      = isJalr && rd.isLink && (!rs.isLink || rs.isLink && isEqualRdRs)  //8   push
+  def isInferableCall        = isJal && rd.isLink                                               //9   push
+  def isUninferableTailCall  = isJalr && rd.isX0 && !rs.isLink                                  //10  no op
+  def isInferableTailCall    = isJal && rd.isX0                                                 //11  no op
+  def isCoRoutineSwap        = isJalr && rd.isLink && rs.isLink && !isEqualRdRs                 //12  pop then push
+  def isFunctionReturn       = isJalr && !rd.isLink && rs.isLink                                //13  pop
+  def isOtherUninferableJump = isJalr && !rd.isLink && !rd.isX0 && !rs.isLink                   //14  no op
+  def isOtherInferableJump   = isJal && !rd.isLink && !rd.isX0                                  //15  no op
+
+  val sel = Seq(
+    isBranch,
+    isUninferableCall,
+    isInferableCall,
+    isUninferableTailCall,
+    isInferableTailCall,
+    isCoRoutineSwap,
+    isFunctionReturn,
+    isOtherUninferableJump,
+    isOtherInferableJump,
+  )
+  import Itype._
+  val typesel = Seq(
+    Branch,
+    UninferableCall,
+    InferableCall,
+    UninferableTailCall,
+    InferableTailCall,
+    CoRoutineSwap,
+    FunctionReturn,
+    OtherUninferableJump,
+    OtherInferableJump,
+  )
+  val jumpType = Mux1H(sel, typesel)
+
+  io.itype := Mux(isBranch || isJal || isJalr, jumpType, 0.U)
+  io.rsIslink := rs.isLink
+  io.rsIs0 := rs.isX0
+  io.rdIslink := rd.isLink
+  io.rdIs0 := rd.isX0
+  io.sel := VecInit(sel).asUInt
+}
+
+class TypeGen extends AnyFlatSpec with ChiselScalatestTester with Matchers {
+
+  val defaultConfig = (new MinimalConfig()).alterPartial({
+    case XSCoreParamsKey => XSCoreParameters()
+  })
+
+  println("test start")
+
+  behavior of "TypeGen"
+  it should "run" in {
+    test(new ItypeGen).withAnnotations(Seq(VerilatorBackendAnnotation)) {
+      m: ItypeGen =>
+        m.io.brType.poke("h3".U)
+        m.io.rd.poke("h2".U)
+        m.io.rs.poke("h2".U)
+
+        println("in.brtype: " + m.io.brType.peek().litValue.toString(16))
+        println("in.rd: " + m.io.rd.peek().litValue.toString(2))
+        println("in.rs: " + m.io.rs.peek().litValue.toString(2))
+
+        println("out.itype: " + m.io.itype.peek().litValue.toString(16))
+        println("out.rsislink: " + m.io.rsIslink.peek().litValue.toString(2))
+        println("out.rsis0: " + m.io.rsIs0.peek().litValue.toString(2))
+        println("out.rdislink: " + m.io.rdIslink.peek().litValue.toString(2))
+        println("out.rdis0: " + m.io.rdIs0.peek().litValue.toString(2))
+        println("out.sel: " + m.io.sel.peek().litValue.toString(9))
+    }
+    println("test done")
+  }
+}
+ */
