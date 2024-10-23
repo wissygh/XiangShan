@@ -70,8 +70,8 @@ object Itype extends NamedUInt(4) {
   def OtherUninferableJump = 14.U   //rename
   def OtherInferableJump   = 15.U   //rename
 
-  // Assuming the branchType is taken here, it will be correctly modified after writeBack.
-  def Branch = 5.U
+  // Assuming the branchType is NonTaken here, it will be correctly modified after writeBack.
+  def Branch = NonTaken
 
   def jumpTypeGen(brType: UInt, rd: OpRegType, rs: OpRegType): UInt = {
 
