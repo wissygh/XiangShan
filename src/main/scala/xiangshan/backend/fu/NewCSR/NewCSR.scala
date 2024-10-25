@@ -651,6 +651,12 @@ class NewCSR(implicit val p: Parameters) extends Module
         m.privState     := privState
       case _ =>
     }
+    mod match {
+      case m: HasDebugStopBundle =>
+        m.debugModeStopCount := debugMode && dcsr.regOut.STOPCOUNT.asBool
+        m.debugModeStopTime  := debugMode && dcsr.regOut.STOPTIME.asBool
+      case _ =>
+    }
   }
 
   csrMods.foreach { mod =>

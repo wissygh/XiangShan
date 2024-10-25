@@ -288,10 +288,10 @@ trait MachineLevel { self: NewCSR =>
     val MML   = RO( 0) // Smepmp
   })).setAddr(CSRs.mseccfg)
 
-  val mcycle = Module(new CSRModule("Mcycle") with HasMachineCounterControlBundle {
+  val mcycle = Module(new CSRModule("Mcycle") with HasMachineCounterControlBundle with HasDebugStopBundle {
     when(w.wen) {
       reg := w.wdata
-    }.elsewhen(!this.mcountinhibit.CY.asUInt.asBool) {
+    }.elsewhen(!this.mcountinhibit.CY.asUInt.asBool || !debugModeStopCount) {
       reg := reg.ALL.asUInt + 1.U
     }.otherwise {
       reg := reg
@@ -299,10 +299,10 @@ trait MachineLevel { self: NewCSR =>
   }).setAddr(CSRs.mcycle)
 
 
-  val minstret = Module(new CSRModule("Minstret") with HasMachineCounterControlBundle with HasRobCommitBundle {
+  val minstret = Module(new CSRModule("Minstret") with HasMachineCounterControlBundle with HasRobCommitBundle with HasDebugStopBundle {
     when(w.wen) {
       reg := w.wdata
-    }.elsewhen(!this.mcountinhibit.IR && robCommit.instNum.valid) {
+    }.elsewhen(!this.mcountinhibit.IR && robCommit.instNum.valid || !debugModeStopCount) {
       reg := reg.ALL.asUInt + robCommit.instNum.bits
     }.otherwise {
       reg := reg
@@ -310,8 +310,8 @@ trait MachineLevel { self: NewCSR =>
   }).setAddr(CSRs.minstret)
 
   val mhpmcounters: Seq[CSRModule[_]] = (3 to 0x1F).map(num =>
-    Module(new CSRModule(s"Mhpmcounter$num", new MhpmcounterBundle) with HasMachineCounterControlBundle with HasPerfCounterBundle {
-      val countingInhibit = this.mcountinhibit.asUInt(num) | !countingEn
+    Module(new CSRModule(s"Mhpmcounter$num", new MhpmcounterBundle) with HasMachineCounterControlBundle with HasPerfCounterBundle with HasDebugStopBundle {
+      val countingInhibit = this.mcountinhibit.asUInt(num).asBool || !countingEn || debugModeStopCount
       val counterAdd = reg.ALL.asUInt +& perf.value
       when (w.wen) {
         reg := w.wdata
@@ -718,4 +718,9 @@ trait HasPerfEventBundle { self: CSRModule[_] =>
 
 trait HasLocalInterruptReqBundle { self: CSRModule[_] =>
   val lcofiReq = IO(Input(Bool()))
+}
+
+trait HasDebugStopBundle { self: CSRModule[_] =>
+  val debugModeStopCount = IO(Input(Bool()))
+  val debugModeStopTime  = IO(Input(Bool()))
 }

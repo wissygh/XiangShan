@@ -138,7 +138,7 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
 
   val time = Module(new CSRModule("time", new CSRBundle {
     val time = RO(63, 0)
-  }) with HasMHPMSink {
+  }) with HasMHPMSink with HasDebugStopBundle {
     val updated = IO(Output(Bool()))
     val stime  = IO(Output(UInt(64.W)))
     val vstime = IO(Output(UInt(64.W)))
@@ -146,11 +146,15 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
     val stimeTmp  = mHPM.time.bits
     val vstimeTmp = mHPM.time.bits + htimedelta
 
-    when (mHPM.time.valid) {
+    when(debugModeStopTime) {
+      reg := reg
+    }.elsewhen (mHPM.time.valid) {
       reg.time := Mux(v, vstimeTmp, stimeTmp)
+    }.otherwise {
+      reg := reg
     }
 
-    updated := GatedValidRegNext(mHPM.time.valid)
+    updated := GatedValidRegNext(mHPM.time.valid && !debugModeStopTime)
     stime  := stimeTmp
     vstime := vstimeTmp
   })
