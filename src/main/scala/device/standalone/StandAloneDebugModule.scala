@@ -29,6 +29,8 @@ import system.SoCParamsKey
 import xiangshan.XSCoreParamsKey
 import xiangshan.XSTileKey
 import device.DebugModule
+import freechips.rocketchip.amba.axi4._
+import freechips.rocketchip.tilelink.TLToAXI4
 import utility.{IntBuffer, RegNextN}
 
 class StandAloneDebugModule (
@@ -46,7 +48,7 @@ class StandAloneDebugModule (
   def addressSet: AddressSet = p(DebugModuleKey).get.address
 
   val debugModule = LazyModule(new DebugModule(hartNum)(p))
-  debugModule.debug.node := xbar
+  debugModule.debug.node := TLToAXI4() := xbar
   debugModule.debug.dmInner.dmInner.sb2tlOpt.foreach(masternode := _.node)
 
   // interrupts

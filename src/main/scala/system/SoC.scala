@@ -416,13 +416,13 @@ class MemMisc()(implicit p: Parameters) extends BaseSoC
 
   val debugModule = LazyModule(new DebugModule(NumCores)(p))
   if (enableCHI) {
-    debugModule.debug.node := device_xbar.get
+    // debugModule.debug.node := device_xbar.get
     // TODO: l3_xbar
     debugModule.debug.dmInner.dmInner.sb2tlOpt.foreach { sb2tl =>
       error_xbar.get := sb2tl.node
     }
   } else {
-    debugModule.debug.node := peripheralXbar.get
+    // debugModule.debug.node := peripheralXbar.get
     debugModule.debug.dmInner.dmInner.sb2tlOpt.foreach { sb2tl  =>
       l3_xbar.get := TLBuffer() := sb2tl.node
     }
