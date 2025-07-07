@@ -36,6 +36,7 @@ import xiangshan.{DebugOptionsKey, PMParameKey, XSTileKey}
 import coupledL2.{EnableCHI, L2Param}
 import coupledL2.tl2chi.CHIIssue
 import openLLC.OpenLLCParam
+import trace.{Trace, BusType}
 
 case object SoCParamsKey extends Field[SoCParameters]
 case object CVMParamskey extends Field[CVMParameters]
@@ -495,6 +496,8 @@ class MemMisc()(implicit p: Parameters) extends BaseSoC
   if (enableCHI) { pll_node := device_xbar.get }
   else { pll_node := peripheralXbar.get }
 
+  val traceMod    = LazyModule(new Trace(BusType.TLbus, true)(p))
+
   val debugModule = LazyModule(new DebugModule(NumCores)(p))
   val debugModuleXbarOpt = Option.when(SeperateDM)(TLXbar())
   if (enableCHI) {
@@ -513,7 +516,7 @@ class MemMisc()(implicit p: Parameters) extends BaseSoC
       debugModule.debug.node := peripheralXbar.get
     }
     debugModule.debug.dmInner.dmInner.sb2tlOpt.foreach { sb2tl  =>
-      l3_xbar.get := TLBuffer() := TLWidthWidget(1) := sb2tl.node
+      traceMod.tlnode.get := TLBuffer() := TLWidthWidget(1) := sb2tl.node
     }
   }
 
@@ -541,6 +544,7 @@ class MemMisc()(implicit p: Parameters) extends BaseSoC
     val clintTime = IO(Output(ValidIO(UInt(64.W))))
 
     debugModule.module.io <> debug_module_io
+    traceMod.module.io.fromCore := 0.U.asTypeOf(traceMod.module.io.fromCore)
 
     // sync external interrupts
     require(plicSource.module.in.length == ext_intrs.getWidth)

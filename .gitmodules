@@ -28,3 +28,6 @@
 [submodule "ChiselAIA"]
 	path = ChiselAIA
 	url = https://github.com/OpenXiangShan/ChiselAIA.git
+[submodule "OpenTrace"]
+	path = OpenTrace
+	url = https://github.com/wissygh/OpenTrace.git
