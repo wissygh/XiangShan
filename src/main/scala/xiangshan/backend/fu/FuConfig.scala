@@ -147,6 +147,8 @@ case class FuConfig (
 
   def hasPredecode: Boolean = Seq(FuType.jmp, FuType.brh, FuType.csr, FuType.ldu).contains(fuType)
 
+  def hasRasAction: Boolean = Seq(FuType.jmp).contains(fuType)
+
   def needTargetPc: Boolean = Seq(FuType.jmp, FuType.brh).contains(fuType)
 
   // predict info
